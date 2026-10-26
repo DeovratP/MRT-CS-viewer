@@ -20,9 +20,9 @@ The date under the two tiles is the date of the data in `data/`.
 
 ## Fill the gaps using
 
-The cards in the side panel choose the method. Each small 3 by 3 icon shows
-what the method may use: rows are slices, columns are time points, the centre
-is the frame on screen.
+The reconstruction opens on CS 2D. The cards in the side panel choose the
+method. Each small 3 by 3 icon shows what the method may use: rows are
+slices, columns are time points, the centre is the frame on screen.
 
 | group | card | uses |
 | --- | --- | --- |
@@ -35,13 +35,33 @@ is the frame on screen.
 | | CS + interpolation | interpolation guides CS in the gaps, slice before and after |
 
 Each card reports its typical error, measured live by hiding real samples and
-predicting them, with an amber dot on the best. The smoothing slider acts on
-all methods at once.
+predicting them, with an amber dot on the best. While anything is still being
+computed, a popup at the bottom of the image shows the progress.
+
+### What the CS cards do
+
+All CS cards look for a temperature field that stays close to the measured
+voxels and is smooth, meaning neighbouring voxels should not differ much. They
+differ only in what counts as a neighbour. 2D uses the in plane neighbours.
+3D also links each voxel to the voxels directly above and below it in the
+slice before and after. Time links each voxel to the same voxel at the
+previous and next time point.
+
+How strongly slices and time points are linked is calibrated per series with
+the holdout test, on slices and time points the cards do not report on, and
+stored in `data/manifest.json`. A link that made predictions worse is
+switched off; its cells in the card icon are then drawn dashed. On the data
+in this package, the time link stays on for cumulative maps, where the same
+voxel at neighbouring time points correlates strongly (0.74 to 0.82), and is
+switched off or nearly off for consecutive maps, where each map is an
+increment between two dynamics and those increments are almost unrelated
+(0.09 and 0.32). As a result, adding context never makes a card worse than
+leaving it out.
 
 Interpolation uses radial basis functions with a thin plate spline kernel,
 fitted on small overlapping patches and blended so the result has no seams.
-CS + interpolation turns the interpolated field into weak extra samples in
-the gaps and lets CS reconcile them with the real ones.
+CS + interpolation turns the interpolated field into weak extra samples in the
+gaps and lets CS reconcile them with the real ones.
 
 This is gap filling with a measured error, not compressed sensing in the
 strict sense: the samples are image voxels that survived a reliability test,
@@ -71,12 +91,28 @@ python3 -m http.server 8000
 
 Then open <http://127.0.0.1:8000/>.
 
+## Personalization
+
+Besides the colour window, palette, overlays and playback, the Personalization
+tab holds the reconstruction smoothing (shown in reconstruction mode only). It
+starts at 60 % and runs from following the samples closely to smoothing more.
+
 ## Updating the data
 
 The viewer reads one `data/` folder. To put a different set of workbooks on
 screen, replace that folder with the converted data for the new set, keep the
 same file names, and reload. The conversion itself is a one off job that is
 done away from the hosted page.
+
+After replacing the data, calibrate the slice and time links once:
+
+```
+node tools/calibrate.cjs
+```
+
+It needs Node.js 18 or newer, uses the solver inside `viewer.html`, takes a
+few minutes per series and writes the weights into `data/manifest.json`.
+Without it the page falls back to fixed default weights.
 
 ## Files
 
@@ -85,4 +121,5 @@ done away from the hosted page.
 | `viewer.html` | the page: start screen, viewer, solver |
 | `index.html` | redirect at the folder root |
 | `.nojekyll` | tells GitHub Pages not to process the folder |
-| `data/` | manifest and the packed volumes |
+| `data/` | manifest, calibrated weights and the packed volumes |
+| `tools/calibrate.cjs` | calibrates the slice and time links after new data |

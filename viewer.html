@@ -264,6 +264,7 @@ input[type="text"]:disabled{opacity:.5}
 .pict rect.o{fill:none;stroke:#2E3F50;stroke-width:1}
 .pict rect.l{fill:rgba(56,214,192,.42)}
 .pict rect.c{fill:var(--accent)}
+.pict rect.x{fill:none;stroke:rgba(56,214,192,.55);stroke-width:1;stroke-dasharray:2 1.6}
 .ctxname{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.2}
 .ctxerr{display:flex;flex-direction:column;gap:4px}
 .ctxerr em{font-style:normal;font-family:var(--mono);font-size:11px;min-height:13px}
@@ -277,9 +278,10 @@ input[type="text"]:disabled{opacity:.5}
 .ctx .best{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--warn);opacity:0;transition:opacity .3s}
 .ctx.isbest .best{opacity:1}
 .ctx:disabled{opacity:.35;cursor:default}
-.smoothrow{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;margin-top:14px}
+.smoothrow{display:grid;grid-template-columns:auto 1fr 44px;gap:12px;align-items:center}
+.smoothrow .v{font-family:var(--mono);font-size:12px;text-align:right}
 .smoothrow .k{color:var(--dim);font-size:12px}
-.smoothends{display:flex;justify-content:space-between;font-size:10.5px;color:#56677A;margin:2px 0 0 76px}
+.smoothends{display:flex;justify-content:space-between;font-size:10.5px;color:#56677A;margin:2px 56px 0 76px}
 .modechip{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--dim);white-space:nowrap}
 .modechip.recon{color:var(--warn);border-color:var(--warn);background:rgba(242,166,90,.10)}
 
@@ -301,6 +303,26 @@ table.stat td{text-align:right;padding:6px 0;border-top:1px solid var(--line);fo
 table.stat td.k{text-align:left;font-family:var(--sans);color:var(--dim)}
 table.stat td.na{color:#4C5B6C}
 table.stat td + td + td{color:#F6C79A}
+
+/* ---------- reconstruction progress popup ---------- */
+.recontoast{
+  position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:4;width:min(340px,80%);
+  background:rgba(14,20,28,.94);border:1px solid rgba(242,166,90,.55);border-radius:12px;
+  padding:12px 14px 11px;box-shadow:0 18px 40px -18px #000;backdrop-filter:blur(6px);
+  transition:opacity .35s ease;
+}
+.recontoast[hidden]{display:none}
+.recontoast.fade{opacity:0}
+.rthead{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600}
+.rthead #rtTitle{flex:1}
+.rthead #rtPct{font-family:var(--mono);color:var(--warn);font-weight:500}
+.rthead .spin{display:inline-block;width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(242,166,90,.25);border-top-color:var(--warn);animation:spin .8s linear infinite}
+.recontoast.done .rthead .spin{animation:none;border-color:var(--accent)}
+.recontoast .bar{margin:9px 0 7px}
+.recontoast .bar i{background:var(--warn)}
+.recontoast.done .bar i{background:var(--accent)}
+.rtsub{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.rtsub:empty{display:none}
 </style>
 </head>
 <body>
@@ -377,6 +399,12 @@ table.stat td + td + td{color:#F6C79A}
     <div id="hint">scroll to move along the lit rail &nbsp;|&nbsp; shift and scroll for the other one &nbsp;|&nbsp; space to play or pause &nbsp;|&nbsp; drag to pan &nbsp;|&nbsp; click to pin a voxel</div>
     <div class="panelabel" id="labA" hidden>Measured</div>
     <div class="panelabel recon" id="labB" hidden><i class="spin"></i>Reconstructed</div>
+    <div class="recontoast" id="reconToast" hidden role="status" aria-live="polite">
+      <div class="rthead"><i class="spin"></i><span id="rtTitle">Reconstruction running</span><span id="rtPct">0 %</span></div>
+      <div class="bar"><i id="rtBar"></i></div>
+      <div class="rtsub" id="rtSub"></div>
+      <div class="rtsub" id="rtBench"></div>
+    </div>
     <div id="loading">reading volumes</div>
   </section>
 
@@ -391,11 +419,6 @@ table.stat td + td + td{color:#F6C79A}
       <div class="block" id="reconBlock" style="display:none">
         <h3>Fill the gaps using</h3>
         <div class="ctxcards" id="ctxCards"></div>
-        <div class="smoothrow">
-          <span class="k">smoothing</span>
-          <input type="range" id="smooth" min="0" max="100" value="40" aria-label="Smoothing">
-        </div>
-        <div class="smoothends"><span>follow samples</span><span>smoother</span></div>
         <p class="muted">Each card shows the typical error when real samples are hidden and then predicted. Lower is better.</p>
       </div>
 
@@ -474,6 +497,16 @@ table.stat td + td + td{color:#F6C79A}
           <input type="number" id="pixmm" step="0.1" min="0" value="0">
         </div>
         <p class="muted">Set the in plane pixel size to switch the scale bar from pixels to millimetres.</p>
+      </div>
+
+      <div class="block" id="smoothBlock" style="display:none">
+        <h3>Reconstruction</h3>
+        <div class="smoothrow">
+          <span class="k">smoothing</span>
+          <input type="range" id="smooth" min="0" max="100" value="60" aria-label="Smoothing">
+          <span class="v" id="smoothVal">60 %</span>
+        </div>
+        <div class="smoothends"><span>follow samples</span><span>smoother</span></div>
       </div>
 
       <div class="block">
@@ -623,8 +656,8 @@ function solveBlock(ds, B, prm, extra) {
     }
   }
 
-  const x = new Float64Array(N);
-  nearestFill(B, nx, ny, x);
+  const x = prm.x0 ? Float64Array.from(prm.x0) : new Float64Array(N);
+  if (!prm.x0) nearestFill(B, nx, ny, x);
   const b = new Float64Array(N);
   let bn = 0;
   for (let i = 0; i < N; i++) {
@@ -674,7 +707,9 @@ function blockFor(ds, z, t, ctx) {
 }
 
 function params(ctx) {
-  return { lam: ctx.lam, wz: 0.4, wt: ctx.time ? 1.0 : 0, iters: 600, tol: 1e-5 };
+  const wz = ctx.wz !== undefined ? ctx.wz : 0.4;
+  const wt = ctx.time ? (ctx.wt !== undefined ? ctx.wt : 1.0) : 0;
+  return { lam: ctx.lam, wz, wt, iters: 600, tol: 1e-5 };
 }
 
 /* Fill slice z. With time in the context every time point comes out at once. */
@@ -1560,6 +1595,8 @@ function updatePanel() {
 function updateReconPanel() {
   $('reconBlock').style.display = split() ? '' : 'none';
   $('estToggle').style.display = split() ? '' : 'none';
+  $('smoothBlock').style.display = split() ? '' : 'none';
+  if (!split()) hideToast(true);
   if (split()) renderCtxCards();
 }
 
@@ -2112,9 +2149,9 @@ const CTX_TIP = {
 };
 
 const R = {
-  ctx: 'hybrid',
-  smooth: 40,
-  sigma: 1,              // smoothing strength, 1 at the middle of the slider
+  ctx: 'cs2d',
+  smooth: 60,
+  sigma: Math.pow(10, 20 / 40),   // smoothing strength at 60 percent
   caches: new Map(),     // context key -> Map of 'z,t' -> Float32Array
   bench: new Map(),      // data key and smoothing -> accuracy test progress
 };
@@ -2123,8 +2160,25 @@ const WK = { seq: 0, pending: {}, fill: null, bench: null };
 const sigmaOf = (v) => Math.pow(10, (v - 40) / 40);
 function dataKey() { return S.patient.id + '|' + S.seriesName; }
 function ctxKey(name) { return dataKey() + '|' + (name || R.ctx) + '|' + R.sigma.toFixed(4); }
+/* How strongly a context links neighbouring slices and time points. These are
+   calibrated per series with the holdout test and stored with the data; zero
+   means the link made predictions worse for that series and is switched off. */
+function couplingFor(name) {
+  const s = baseSeries();
+  return (s && s.meta.coupling && s.meta.coupling[name]) || {};
+}
+
 function ctxObj(name) {
-  return Object.assign({ reach: 1, lam: 5 / R.sigma, rbfSmooth: 0.3 * R.sigma, mu: 1 }, CTX[name || R.ctx]);
+  const n = name || R.ctx, cp = couplingFor(n);
+  const o = Object.assign({ reach: 1, lam: 5 / R.sigma, rbfSmooth: 0.3 * R.sigma, mu: 1 }, CTX[n]);
+  if (cp.wz !== undefined) o.wz = cp.wz;
+  if (cp.wt !== undefined) o.wt = cp.wt;
+  return o;
+}
+
+function linkOff(name) {
+  const c = CTX[name], cp = couplingFor(name);
+  return { slices: c.slices && c.method === 'cs' && cp.wz === 0, time: c.time && cp.wt === 0 };
 }
 
 function reconPlane(z, t) {
@@ -2196,6 +2250,7 @@ function onSolved(name, m) {
     }
   }
   if (name === 'fill') pumpFill(); else pumpBench();
+  updateToast();
 }
 
 /* ------------------------------------------------------------ filling queue */
@@ -2278,12 +2333,14 @@ function pumpBench() {
 /* 3 by 3 icon: rows are slices, columns are time points, the centre is the
    frame on screen. Squares stand for CS, dots for interpolation, both for both. */
 function pictogram(name) {
-  const c = CTX[name];
+  const c = CTX[name], off = S.patient && baseSeries() ? linkOff(name) : { slices: false, time: false };
   const on = (r, k) => (r === 1 && k === 1) || (c.slices && k === 1) || (c.time && r === 1);
+  const dropped = (r, k) => !(r === 1 && k === 1) && ((off.slices && k === 1 && r !== 1) || (off.time && r === 1 && k !== 1));
   let s = '<svg viewBox="0 0 30 30" class="pict">';
   for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) {
     const x = 1.5 + k * 9.5, y = 1.5 + r * 9.5, lit = on(r, k), centre = r === 1 && k === 1;
     const cls = centre ? 'c' : lit ? 'l' : 'o';
+    if (lit && dropped(r, k)) { s += '<rect x="' + x + '" y="' + y + '" width="8" height="8" rx="1.8" class="x"/>'; continue; }
     if (!lit) { s += '<rect x="' + x + '" y="' + y + '" width="8" height="8" rx="1.8" class="o"/>'; continue; }
     if (c.method === 'rbf') s += '<circle cx="' + (x + 4) + '" cy="' + (y + 4) + '" r="3.6" class="' + cls + '"/>';
     else {
@@ -2322,6 +2379,11 @@ function renderCtxCards() {
   const nt = baseSeries().meta.nt;
   $('ctxCards').querySelectorAll('.ctx').forEach((el) => {
     const c = el.dataset.ctx;
+    const off = linkOff(c);
+    el.querySelector('svg.pict').outerHTML = pictogram(c);
+    el.title = CTX_TIP[c] +
+      (off.time ? '. For this series the time link is switched off, because using it made predictions worse' : '') +
+      (off.slices ? '. For this series the slice link is switched off, because using it made predictions worse' : '');
     el.setAttribute('aria-pressed', String(c === R.ctx));
     el.disabled = nt < 2 && CTX[c].time;
     const v = vals[c];
@@ -2332,10 +2394,71 @@ function renderCtxCards() {
   });
 }
 
+
+/* ------------------------------------------------------- progress popup */
+
+let toastTimer = null;
+
+function fillProgress() {
+  const cache = R.caches.get(ctxKey());
+  const nz = S.patient.nz, nt = baseSeries().meta.nt;
+  const total = nz * nt;
+  if (!cache) return { done: 0, total };
+  if (CTX[R.ctx].time) {
+    let z = 0;
+    for (let k = 0; k < nz; k++) if (cache.has(k + ',' + S.t)) z++;
+    return { done: z * nt, total };
+  }
+  return { done: Math.min(cache.size, total), total };
+}
+
+function benchProgress() {
+  const b = R.bench.get(benchKey());
+  if (!b) return { done: 0, total: 1 };
+  let total = 0, left = 0;
+  for (const c of Object.keys(b.res)) { total += 3; left += b.res[c].left; }
+  return { done: total - left, total };
+}
+
+function showToast() {
+  if (!S.patient || !split() || $('app').hidden) return;
+  clearTimeout(toastTimer);
+  const el = $('reconToast');
+  el.hidden = false;
+  el.classList.remove('fade', 'done');
+  updateToast();
+}
+
+function hideToast(now) {
+  clearTimeout(toastTimer);
+  const el = $('reconToast');
+  if (now) { el.hidden = true; el.classList.remove('fade', 'done'); return; }
+  el.classList.add('fade');
+  toastTimer = setTimeout(() => { el.hidden = true; el.classList.remove('fade'); }, 400);
+}
+
+function updateToast() {
+  const el = $('reconToast');
+  if (el.hidden || !S.patient || !split()) return;
+  const f = fillProgress(), b = benchProgress();
+  const frac = f.total ? f.done / f.total : 1;
+  const finished = f.done >= f.total && b.done >= b.total;
+  el.classList.toggle('done', finished);
+  $('rtTitle').textContent = finished ? 'Reconstruction complete' : 'Reconstruction running';
+  $('rtPct').textContent = Math.round(frac * 100) + ' %';
+  $('rtBar').style.width = (frac * 100).toFixed(1) + '%';
+  $('rtSub').textContent = CTX_FULL[R.ctx] + ', ' + f.done + ' of ' + f.total + ' frames filled';
+  $('rtBench').textContent = b.done < b.total ? 'Measuring accuracy, ' + b.done + ' of ' + b.total : '';
+  clearTimeout(toastTimer);
+  if (finished) toastTimer = setTimeout(() => hideToast(false), 1400);
+  else el.classList.remove('fade');
+}
+
 function setContext(name) {
   if (!CTX[name] || name === R.ctx) return;
   R.ctx = name;
   renderCtxCards();
+  showToast();
   draw(); buildRails(); drawVoxelChart(); updateReading();
   pumpFill();
 }
@@ -2343,9 +2466,12 @@ function setContext(name) {
 let smoothTimer = null;
 function setSmoothing(v) {
   R.smooth = v;
+  $('smoothVal').textContent = Math.round(v) + ' %';
+  showToast();
   clearTimeout(smoothTimer);
   smoothTimer = setTimeout(() => {
     R.sigma = sigmaOf(v);
+    showToast();
     renderCtxCards();
     draw(); buildRails(); drawVoxelChart(); updateReading();
     pumpFill(); pumpBench();
@@ -2363,6 +2489,7 @@ function wireRecon() {
 
 function startRecon() {
   if (!S.patient || !split()) return;
+  showToast();
   renderCtxCards();
   pumpFill();
   pumpBench();
@@ -2419,6 +2546,7 @@ function route() {
 
 function showHome() {
   haltPlayback();
+  hideToast(true);
   $('app').hidden = true;
   $('home').hidden = false;
   refreshHome();
@@ -2430,6 +2558,7 @@ async function enterViewer(mode) {
   $('home').hidden = true;
   $('app').hidden = false;
   S.mode = mode;
+  if (mode === 'recon') { R.ctx = 'cs2d'; if (S.patient && baseSeries() && $('ctxCards').firstChild) renderCtxCards(); }
   document.body.classList.toggle('recon', mode === 'recon');
   $('modeChip').textContent = mode === 'recon' ? 'Reconstruction' : 'Measured data';
   $('modeChip').classList.toggle('recon', mode === 'recon');
