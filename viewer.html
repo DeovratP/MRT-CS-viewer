@@ -1,0 +1,2470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MRT data reconstruction</title>
+<style>
+:root{
+  --bg:#070A0F;
+  --panel:#0E141C;
+  --panel2:#141C26;
+  --line:#1F2A36;
+  --line2:#2C3A4A;
+  --text:#D6E0EA;
+  --dim:#7A8B9E;
+  --accent:#38D6C0;
+  --accent-soft:rgba(56,214,192,.14);
+  --warn:#F2A65A;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:13px;line-height:1.45;
+  display:flex;flex-direction:column;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+button,select,input{font-family:inherit;font-size:inherit;color:inherit}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:center;gap:22px;
+  padding:0 16px;height:52px;flex:0 0 auto;
+  background:var(--panel);border-bottom:1px solid var(--line);
+}
+.brand{display:flex;flex-direction:column;line-height:1.1;margin-right:4px}
+.brand b{font-size:13px;font-weight:650;letter-spacing:.02em}
+.brand span{font-size:10px;color:var(--dim);letter-spacing:.16em;text-transform:uppercase}
+.seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px}
+.seg button{
+  background:none;border:0;padding:5px 13px;border-radius:5px;cursor:pointer;
+  color:var(--dim);font-weight:550;letter-spacing:.01em;transition:.12s;
+}
+.seg button:hover{color:var(--text)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.field{display:flex;align-items:center;gap:8px}
+.field label{color:var(--dim);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.grow{flex:1}
+.status{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.status b{color:var(--accent);font-weight:500}
+
+/* ---------- body ---------- */
+main{flex:1;display:grid;grid-template-columns:1fr 316px;min-height:0}
+#stage{position:relative;min-width:0;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden}
+#view{display:block;cursor:crosshair;image-rendering:pixelated}
+#stage.panning #view{cursor:grabbing}
+#overlayInfo{
+  position:absolute;left:14px;top:12px;pointer-events:none;
+  font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;
+}
+#overlayInfo .big{display:block;font-size:22px;color:var(--text);letter-spacing:.01em;line-height:1.2}
+#overlayInfo .big em{font-style:normal;color:var(--dim);font-size:13px}
+#hint{
+  position:absolute;left:14px;bottom:12px;pointer-events:none;
+  font-family:var(--mono);font-size:10.5px;color:#4C5B6C;letter-spacing:.03em;
+}
+#cbar{position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none}
+#loading{
+  position:absolute;inset:0;display:none;place-items:center;background:rgba(7,10,15,.86);
+  font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.08em;z-index:5;
+}
+#loading.on{display:grid}
+
+/* ---------- sidebar ---------- */
+aside{
+  border-left:1px solid var(--line);background:var(--panel);
+  overflow-y:auto;padding-bottom:18px;
+}
+.block{padding:14px 16px;border-bottom:1px solid var(--line)}
+.block h3{
+  margin:0 0 11px;font-size:10px;font-weight:600;color:var(--dim);
+  letter-spacing:.18em;text-transform:uppercase;
+}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.row:last-child{margin-bottom:0}
+.row span.k{color:var(--dim);font-size:12px}
+.row span.v{font-family:var(--mono);font-size:12px}
+input[type="number"],select{
+  background:var(--panel2);border:1px solid var(--line2);border-radius:5px;
+  padding:5px 7px;width:92px;font-family:var(--mono);font-size:12px;
+}
+select{width:100%;padding:6px 8px;font-family:var(--sans)}
+input[type="number"]:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[type="range"]{width:100%;accent-color:var(--accent);background:transparent}
+.btn{
+  background:var(--panel2);border:1px solid var(--line2);border-radius:6px;
+  padding:6px 10px;cursor:pointer;color:var(--dim);transition:.12s;
+}
+.btn:hover{color:var(--text);border-color:var(--accent)}
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:9px;cursor:pointer;margin-bottom:9px;color:var(--dim)}
+.toggle:last-child{margin-bottom:0}
+.toggle input{accent-color:var(--accent);width:14px;height:14px}
+.toggle:hover{color:var(--text)}
+.readout{font-family:var(--mono);font-size:12px}
+.readout .big{font-size:26px;letter-spacing:.01em;color:var(--accent)}
+.readout .big.none{color:var(--dim);font-size:15px}
+.muted{color:var(--dim);font-size:11.5px;margin:8px 0 0}
+canvas.chart{width:100%;height:104px;display:block}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:7px}
+table.val{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px;margin-top:10px}
+table.val th{color:var(--dim);font-weight:500;text-align:right;padding:2px 0;border-bottom:1px solid var(--line)}
+table.val th:first-child{text-align:left}
+table.val td{text-align:right;padding:2px 0;color:var(--text)}
+table.val td:first-child{text-align:left;color:var(--dim)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+/* ---------- rails ---------- */
+footer{
+  flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);
+  padding:9px 16px 11px;display:flex;flex-direction:column;gap:7px;
+}
+.rail{display:grid;grid-template-columns:118px auto 1fr 116px;align-items:center;gap:14px;cursor:pointer}
+.rail .name{
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+  display:flex;align-items:center;gap:7px;
+}
+.rail .name .dot{width:6px;height:6px;border-radius:50%;background:var(--line2)}
+.rail.active .name{color:var(--accent)}
+.rail.active .name .dot{background:var(--accent);box-shadow:0 0 9px var(--accent)}
+.rail .ticks{position:relative;height:26px}
+.rail .value{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:right}
+.rail.active .value{color:var(--text)}
+.rail .value b{color:var(--accent);font-weight:500}
+.tick{
+  position:absolute;bottom:0;width:3px;border-radius:2px;background:var(--line2);
+  transition:height .1s,background .1s;
+}
+.rail.active .tick{background:#33475A}
+.tick.on{background:var(--accent) !important;box-shadow:0 0 8px var(--accent-soft)}
+.tick.ready{background:rgba(242,166,90,.62) !important}
+.tick.cur{background:var(--text) !important}
+
+/* ---------- icon buttons ---------- */
+.icon{
+  width:30px;height:30px;display:inline-grid;place-items:center;flex:0 0 auto;
+  background:var(--panel2);border:1px solid var(--line2);border-radius:7px;
+  color:var(--dim);cursor:pointer;padding:0;transition:color .12s,border-color .12s,background .12s;
+}
+.icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.icon:hover{color:var(--text);border-color:var(--accent)}
+.icon.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.icon:disabled{opacity:.35;cursor:default;border-color:var(--line2);color:var(--dim)}
+.icon.sm{width:26px;height:26px;border-radius:6px}
+.icon.sm svg{width:12px;height:12px}
+.tools{
+  position:absolute;top:12px;right:16px;display:flex;align-items:center;gap:6px;
+  padding:5px;border-radius:10px;background:rgba(14,20,28,.82);border:1px solid var(--line);
+  backdrop-filter:blur(6px);z-index:3;
+}
+.tools .sep{width:1px;height:20px;background:var(--line2);margin:0 2px}
+.transport{display:flex;gap:5px;align-items:center}
+.transport .icon.paused{color:var(--warn);border-color:var(--warn);background:rgba(242,166,90,.12)}
+
+/* ---------- tabs ---------- */
+.tabs{
+  position:sticky;top:0;z-index:2;display:flex;background:var(--panel);
+  border-bottom:1px solid var(--line);padding:0 8px;
+}
+.tabs button{
+  flex:1 1 auto;background:none;border:0;padding:13px 4px 11px;cursor:pointer;
+  color:var(--dim);font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:.12s;
+}
+.tabs button:hover{color:var(--text)}
+.tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tabpanel[hidden]{display:none}
+
+/* ---------- collapsible pane ---------- */
+main{transition:grid-template-columns .22s ease}
+body.pane-closed main{grid-template-columns:1fr 0px}
+body.pane-closed aside{border-left-width:0;overflow:hidden}
+aside{min-width:0}
+
+/* ---------- screens ---------- */
+.screen{flex:1;min-height:0;display:flex;flex-direction:column}
+.screen[hidden]{display:none}
+
+/* ---------- start page ---------- */
+.launch{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:38px;padding:40px 24px}
+.tiles{display:flex;gap:30px;flex-wrap:wrap;justify-content:center}
+.tile{
+  width:min(330px,40vw);min-width:250px;aspect-ratio:1.12;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;
+  background:linear-gradient(165deg,#121A25 0%,#0B1118 100%);
+  border:1px solid var(--line2);border-radius:24px;cursor:pointer;color:var(--text);
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.tile svg{width:92px;height:92px;transition:transform .25s ease}
+.tile .lbl{display:flex;flex-direction:column;align-items:center;gap:4px}
+.tile small{font-family:var(--mono);font-size:11px;letter-spacing:.32em;color:var(--dim)}
+.tile b{font-size:21px;font-weight:600;letter-spacing:.005em}
+.tile:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:0 22px 46px -20px rgba(56,214,192,.45)}
+.tile:hover svg{transform:scale(1.06)}
+.tile.recon:hover{border-color:var(--warn);box-shadow:0 22px 46px -20px rgba(242,166,90,.42)}
+.tile:active{transform:translateY(-1px)}
+.tile:focus-visible{outline:2px solid var(--accent);outline-offset:5px}
+.tile:disabled{opacity:.3;cursor:default;transform:none;box-shadow:none;border-color:var(--line2)}
+.datechip{
+  display:inline-flex;align-items:center;gap:9px;background:none;border:1px solid transparent;
+  border-radius:999px;padding:7px 14px;color:var(--dim);cursor:pointer;
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.05em;transition:.15s;
+}
+.datechip svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.datechip:hover{color:var(--text);border-color:var(--line2)}
+
+/* ---------- import dialog ---------- */
+.dlg{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(4,6,10,.72);backdrop-filter:blur(4px)}
+.dlg[hidden]{display:none}
+.dlgbox{position:relative;width:min(460px,92vw);background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:26px 26px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px -30px #000}
+.dlgbox h2{margin:0 0 4px;font-size:16px;font-weight:600}
+.dlgx{position:absolute;top:14px;right:14px}
+.fld{display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:12px}
+input[type="text"]{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12.5px;width:100%;color:var(--text)}
+input[type="text"]:focus{outline:2px solid var(--accent);outline-offset:1px}
+input[type="text"]:disabled{opacity:.5}
+.dlgprog{display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.dlgprog[hidden]{display:none}
+.bar{height:5px;border-radius:3px;background:var(--panel2);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.msg{margin:0;font-size:12px;color:var(--warn);min-height:0}
+.msg:empty{display:none}
+.dlgact{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.dlgact [hidden]{display:none}
+.primary{background:var(--accent);color:#04201C;border:0;border-radius:8px;padding:9px 20px;font-weight:650;cursor:pointer}
+.primary:hover{filter:brightness(1.08)}
+
+/* ---------- reconstruction ---------- */
+.panelabel{
+  position:absolute;transform:translateX(-50%);pointer-events:none;z-index:2;
+  display:flex;align-items:center;gap:8px;white-space:nowrap;
+  font-size:10.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:#8EA3B8;
+}
+.panelabel[hidden]{display:none}
+.panelabel.recon{color:var(--warn)}
+.panelabel .spin{display:none;width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(242,166,90,.25);border-top-color:var(--warn);animation:spin .8s linear infinite}
+.panelabel.busy .spin{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ctxcards{display:block}
+.ctx{
+  position:relative;display:grid;grid-template-columns:30px 1fr;grid-template-rows:auto auto;
+  column-gap:10px;row-gap:5px;align-items:center;text-align:left;padding:10px 10px 10px 9px;
+  border-radius:10px;background:var(--panel2);border:1px solid var(--line2);color:var(--dim);cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+.ctx:hover{border-color:#47627C}
+.ctx .pict{grid-row:1 / span 2;width:30px;height:30px}
+.pict rect.o{fill:none;stroke:#2E3F50;stroke-width:1}
+.pict rect.l{fill:rgba(56,214,192,.42)}
+.pict rect.c{fill:var(--accent)}
+.ctxname{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.2}
+.ctxerr{display:flex;flex-direction:column;gap:4px}
+.ctxerr em{font-style:normal;font-family:var(--mono);font-size:11px;min-height:13px}
+.ctxerr i{display:block;height:3px;border-radius:2px;background:var(--line)}
+.ctxerr i b{display:block;height:100%;width:0;border-radius:2px;background:#5C7286;transition:width .45s ease}
+.ctx.measuring .ctxerr em::before{content:"measuring";color:#4C5B6C;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.ctx[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.ctx[aria-pressed="true"] .ctxerr em{color:var(--accent)}
+.ctx[aria-pressed="true"] .ctxerr i b{background:var(--accent)}
+.ctx .best{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--warn);opacity:0;transition:opacity .3s}
+.ctx.isbest .best{opacity:1}
+.ctx:disabled{opacity:.35;cursor:default}
+.smoothrow{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;margin-top:14px}
+.smoothrow .k{color:var(--dim);font-size:12px}
+.smoothends{display:flex;justify-content:space-between;font-size:10.5px;color:#56677A;margin:2px 0 0 76px}
+.modechip{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--dim);white-space:nowrap}
+.modechip.recon{color:var(--warn);border-color:var(--warn);background:rgba(242,166,90,.10)}
+
+/* ---------- method cards in groups ---------- */
+.ctxgroup{font-size:9.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:#5E7185;margin:12px 0 7px}
+.ctxgroup:first-child{margin-top:0}
+.ctxgroup.gap{margin:6px 0 0}
+.ctxgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ctx.wide{grid-column:1 / -1}
+.pict circle.c{fill:var(--accent)}
+.pict circle.l{fill:rgba(56,214,192,.5)}
+.pict circle.h{fill:#0E141C}
+
+/* ---------- stats ---------- */
+table.stat{width:100%;border-collapse:collapse;font-size:12px}
+table.stat th{font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);text-align:right;padding:0 0 7px}
+table.stat th.rec{color:var(--warn)}
+table.stat td{text-align:right;padding:6px 0;border-top:1px solid var(--line);font-family:var(--mono)}
+table.stat td.k{text-align:left;font-family:var(--sans);color:var(--dim)}
+table.stat td.na{color:#4C5B6C}
+table.stat td + td + td{color:#F6C79A}
+</style>
+</head>
+<body>
+
+<div id="home" class="screen">
+  <div class="launch">
+    <div class="tiles">
+      <button class="tile" id="goView">
+        <svg viewBox="0 0 96 96" aria-hidden="true">
+          <path d="M48 18 82 34 48 50 14 34Z" fill="rgba(56,214,192,.16)" stroke="#38D6C0" stroke-width="2.4" stroke-linejoin="round"/>
+          <path d="M14 47 48 63 82 47" fill="none" stroke="#38D6C0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>
+          <path d="M14 60 48 76 82 60" fill="none" stroke="#38D6C0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".42"/>
+        </svg>
+        <span class="lbl"><small>MRT</small><b>View data</b></span>
+      </button>
+      <button class="tile recon" id="goRecon">
+        <svg viewBox="0 0 96 96" aria-hidden="true">
+          <g stroke-width="2">
+            <rect x="16" y="16" width="14" height="14" rx="3" fill="#38D6C0"/>
+            <rect x="34" y="16" width="14" height="14" rx="3" fill="rgba(242,166,90,.55)"/>
+            <rect x="52" y="16" width="14" height="14" rx="3" fill="rgba(242,166,90,.55)"/>
+            <rect x="70" y="16" width="10" height="14" rx="3" fill="#38D6C0"/>
+            <rect x="16" y="34" width="14" height="14" rx="3" fill="rgba(242,166,90,.55)"/>
+            <rect x="34" y="34" width="14" height="14" rx="3" fill="#38D6C0"/>
+            <rect x="52" y="34" width="14" height="14" rx="3" fill="rgba(242,166,90,.55)"/>
+            <rect x="70" y="34" width="10" height="14" rx="3" fill="rgba(242,166,90,.55)"/>
+            <rect x="16" y="52" width="14" height="14" rx="3" fill="none" stroke="#3A4C5E" stroke-dasharray="3 3"/>
+            <rect x="34" y="52" width="14" height="14" rx="3" fill="none" stroke="#3A4C5E" stroke-dasharray="3 3"/>
+            <rect x="52" y="52" width="14" height="14" rx="3" fill="#38D6C0"/>
+            <rect x="70" y="52" width="10" height="14" rx="3" fill="none" stroke="#3A4C5E" stroke-dasharray="3 3"/>
+            <rect x="16" y="70" width="14" height="10" rx="3" fill="#38D6C0"/>
+            <rect x="34" y="70" width="14" height="10" rx="3" fill="none" stroke="#3A4C5E" stroke-dasharray="3 3"/>
+            <rect x="52" y="70" width="14" height="10" rx="3" fill="none" stroke="#3A4C5E" stroke-dasharray="3 3"/>
+            <rect x="70" y="70" width="10" height="10" rx="3" fill="#38D6C0"/>
+          </g>
+        </svg>
+        <span class="lbl"><small>MRT</small><b>Reconstruction</b></span>
+      </button>
+    </div>
+    <div class="datechip" id="dataDate" title="Data date">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.6"/><path d="M2.5 6.8h11M5.5 2v3M10.5 2v3"/></svg>
+      <span></span>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="screen" hidden>
+<header>
+  <button class="icon" id="homeBtn" title="Back to the start page" aria-label="Back to the start page"><svg viewBox="0 0 16 16"><path d="M2.6 7.4 8 3l5.4 4.4"/><path d="M4.2 6.4V13h2.9V9.6h1.8V13h2.9V6.4"/></svg></button>
+  <div class="brand"><b>MR thermometry</b><span>MRT data reconstruction</span></div>
+  <span class="modechip" id="modeChip">Measured data</span>
+  <div class="seg" id="patientSeg"></div>
+  <div class="seg" id="seriesSeg">
+    <button data-series="cumulative" aria-pressed="true">Cumulative</button>
+    <button data-series="consecutive" aria-pressed="false">Consecutive</button>
+  </div>
+  <div class="grow"></div>
+  <div class="status" id="status">loading</div>
+  <button class="icon on" id="paneBtn" title="Hide the side panel" aria-label="Hide the side panel" aria-expanded="true"><svg viewBox="0 0 16 16"><rect x="2.2" y="3" width="11.6" height="10" rx="1.6"/><path d="M10 3v10"/></svg></button>
+</header>
+
+<main>
+  <section id="stage">
+    <canvas id="view"></canvas>
+    <canvas id="cbar" width="86" height="300"></canvas>
+    <div id="overlayInfo"></div>
+    <div class="tools">
+      <button class="icon" id="zoomInBtn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3"/><path d="M10.2 10.2 13.6 13.6M5 7h4M7 5v4"/></svg></button>
+      <button class="icon" id="zoomOutBtn" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3"/><path d="M10.2 10.2 13.6 13.6M5 7h4"/></svg></button>
+      <button class="icon" id="resetBtn" title="Reset view" aria-label="Reset view"><svg viewBox="0 0 16 16"><path d="M3.2 8a4.8 4.8 0 1 0 1.5-3.5"/><path d="M3 2.4v2.9h2.9"/></svg></button>
+      <span class="sep"></span>
+      <button class="icon" id="saveBtn" title="Save image" aria-label="Save image"><svg viewBox="0 0 16 16"><path d="M8 2.5v7.5M4.8 7l3.2 3.2L11.2 7M2.8 11.5v1.7h10.4v-1.7"/></svg></button>
+    </div>
+    <div id="hint">scroll to move along the lit rail &nbsp;|&nbsp; shift and scroll for the other one &nbsp;|&nbsp; space to play or pause &nbsp;|&nbsp; drag to pan &nbsp;|&nbsp; click to pin a voxel</div>
+    <div class="panelabel" id="labA" hidden>Measured</div>
+    <div class="panelabel recon" id="labB" hidden><i class="spin"></i>Reconstructed</div>
+    <div id="loading">reading volumes</div>
+  </section>
+
+  <aside id="pane">
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="analysis" aria-selected="true">Analysis</button>
+      <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
+      <button role="tab" data-tab="personal" aria-selected="false">Personalization</button>
+    </nav>
+
+    <div class="tabpanel" id="tab-analysis" role="tabpanel">
+      <div class="block" id="reconBlock" style="display:none">
+        <h3>Fill the gaps using</h3>
+        <div class="ctxcards" id="ctxCards"></div>
+        <div class="smoothrow">
+          <span class="k">smoothing</span>
+          <input type="range" id="smooth" min="0" max="100" value="40" aria-label="Smoothing">
+        </div>
+        <div class="smoothends"><span>follow samples</span><span>smoother</span></div>
+        <p class="muted">Each card shows the typical error when real samples are hidden and then predicted. Lower is better.</p>
+      </div>
+
+      <div class="block">
+        <h3>Reading</h3>
+        <div class="readout">
+          <div class="big none" id="valueBig">no voxel</div>
+          <div class="row" style="margin-top:6px"><span class="k">position</span><span class="v" id="posTxt">.</span></div>
+          <div class="row"><span class="k">tissue</span><span class="v" id="tissueTxt">.</span></div>
+          <div class="row"><span class="k">source</span><span class="v" id="srcTxt">.</span></div>
+          <div class="row"><span class="k">pinned</span><span class="v" id="pinTxt">none</span></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <h3>Voxel across time</h3>
+        <canvas class="chart" id="voxChart" width="560" height="208"></canvas>
+        <p class="muted" id="voxNote">Hover the image, or click to pin a voxel.</p>
+      </div>
+
+      <div class="block" id="probeBlock">
+        <h3>Probe regions across time</h3>
+        <canvas class="chart" id="probeChart" width="560" height="208"></canvas>
+        <div class="legend" id="probeLegend"></div>
+      </div>
+
+    </div>
+
+    <div class="tabpanel" id="tab-stats" role="tabpanel" hidden>
+      <div class="block">
+        <h3 id="statSliceHead">This slice</h3>
+        <table class="stat" id="statSlice"></table>
+      </div>
+      <div class="block">
+        <h3 id="statVolumeHead">All slices</h3>
+        <table class="stat" id="statVolume"></table>
+      </div>
+    </div>
+
+    <div class="tabpanel" id="tab-personal" role="tabpanel" hidden>
+      <div class="block">
+        <h3>Color window</h3>
+        <div class="row">
+          <span class="k">minimum</span>
+          <input type="number" id="vmin" step="0.1" value="0">
+        </div>
+        <div class="row">
+          <span class="k">maximum</span>
+          <input type="number" id="vmax" step="0.1" value="10">
+        </div>
+        <div class="btns" style="margin-top:9px">
+          <button class="btn" data-win="5">0 to 5</button>
+          <button class="btn" data-win="10">0 to 10</button>
+          <button class="btn" data-win="p95">p95</button>
+          <button class="btn" data-win="frame">this frame</button>
+          <button class="btn" data-win="full">full range</button>
+        </div>
+        <p class="muted">The window opens at 0 to 10 degrees. Values far above that are almost always artefacts rather than tissue heating, so the full range flattens the picture.</p>
+      </div>
+
+      <div class="block">
+        <h3>Palette</h3>
+        <select id="cmap"></select>
+        <label class="toggle" style="margin-top:11px"><input type="checkbox" id="clipLow"> Hide values below the minimum</label>
+      </div>
+
+      <div class="block">
+        <h3>Overlays</h3>
+        <label class="toggle"><input type="checkbox" id="showBody" checked> Body outline and silhouette</label>
+        <label class="toggle" id="probeToggle"><input type="checkbox" id="showProbes" checked> Probe positions</label>
+        <label class="toggle"><input type="checkbox" id="showGrid"> Crosshair at the cursor</label>
+        <label class="toggle"><input type="checkbox" id="showBar" checked> Scale bar</label>
+        <label class="toggle" id="estToggle" style="display:none"><input type="checkbox" id="markEst"> Dim the estimated voxels</label>
+        <div class="row" style="margin-top:10px">
+          <span class="k">pixel size, mm</span>
+          <input type="number" id="pixmm" step="0.1" min="0" value="0">
+        </div>
+        <p class="muted">Set the in plane pixel size to switch the scale bar from pixels to millimetres.</p>
+      </div>
+
+      <div class="block">
+        <h3>Playback</h3>
+        <div class="row">
+          <span class="k">frames per second</span>
+          <select id="speed" style="width:92px">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+            <option value="12">12</option>
+          </select>
+        </div>
+        <label class="toggle" style="margin-top:4px"><input type="checkbox" id="loopPlay" checked> Loop back to the start</label>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <div class="rail active" id="railSlice" data-axis="slice">
+    <div class="name"><i class="dot"></i>Slice</div>
+    <div class="transport" data-axis="slice">
+      <button class="icon sm" data-act="play" title="Play through the slices" aria-label="Play through the slices"><svg viewBox="0 0 16 16"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor" stroke="none"/></svg></button>
+      <button class="icon sm" data-act="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 16 16"><rect x="3.6" y="2.8" width="3" height="10.4" rx=".6" fill="currentColor" stroke="none"/><rect x="9.4" y="2.8" width="3" height="10.4" rx=".6" fill="currentColor" stroke="none"/></svg></button>
+      <button class="icon sm" data-act="stop" title="Stop and go back to where play started" aria-label="Stop"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.2" fill="currentColor" stroke="none"/></svg></button>
+    </div>
+    <div class="ticks"></div>
+    <div class="value"><b id="sliceNum">1</b> of <span id="sliceTot">25</span></div>
+  </div>
+  <div class="rail" id="railTime" data-axis="time">
+    <div class="name"><i class="dot"></i>Time point</div>
+    <div class="transport" data-axis="time">
+      <button class="icon sm" data-act="play" title="Play through the time points" aria-label="Play through the time points"><svg viewBox="0 0 16 16"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor" stroke="none"/></svg></button>
+      <button class="icon sm" data-act="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 16 16"><rect x="3.6" y="2.8" width="3" height="10.4" rx=".6" fill="currentColor" stroke="none"/><rect x="9.4" y="2.8" width="3" height="10.4" rx=".6" fill="currentColor" stroke="none"/></svg></button>
+      <button class="icon sm" data-act="stop" title="Stop and go back to where play started" aria-label="Stop"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.2" fill="currentColor" stroke="none"/></svg></button>
+    </div>
+    <div class="ticks"></div>
+    <div class="value"><b id="timeNum">1</b> of <span id="timeTot">6</span></div>
+  </div>
+</footer>
+</div>
+
+<script type="text/plain" id="solverSrc">
+/* Gap filling solver. Runs inside a Web Worker so the page never freezes.
+
+   Minimises, over the body voxels of a block of planes (slices by time points),
+       lam * sum over measured voxels of (x - y)^2
+     + sum over in plane neighbour pairs of (x_i - x_j)^2
+     + wz * sum over neighbouring slices of (x_i - x_j)^2
+     + wt * sum over neighbouring time points of (x_i - x_j)^2
+   with preconditioned conjugate gradients. The block decides what the solver
+   may look at: one plane, a stack of slices, a row of time points, or both.
+   Optional weak virtual samples can be added to the data term, which is how
+   the combined method lets interpolation guide the solve in the gaps. */
+
+const DS = {};
+
+function loadPlanes(ds, zs, ts) {
+  const P = ds.nx * ds.ny, nzs = zs.length, nts = ts.length, N = P * nzs * nts;
+  const inB = new Uint8Array(N), meas = new Uint8Array(N), y = new Float64Array(N);
+  const span = (ds.hi - ds.lo) / 65534;
+  for (let ti = 0; ti < nts; ti++) {
+    for (let zi = 0; zi < nzs; zi++) {
+      const off = (ti * nzs + zi) * P;
+      const mb = zs[zi] * P, cb = (ts[ti] * ds.nz + zs[zi]) * P;
+      for (let i = 0; i < P; i++) {
+        if (!ds.mask[mb + i]) continue;
+        inB[off + i] = 1;
+        const c = ds.codes[cb + i];
+        if (c > 0) { meas[off + i] = 1; y[off + i] = ds.lo + (c - 1) * span; }
+      }
+    }
+  }
+  return { P, nzs, nts, N, inB, meas, y };
+}
+
+/* Starting guess: every gap takes the value of its nearest sample in its plane. */
+function nearestFill(B, nx, ny, x) {
+  const { P, inB, meas, y } = B;
+  const dist = new Float32Array(P), src = new Int32Array(P);
+  const R2 = Math.SQRT2;
+  for (let off = 0; off < B.N; off += P) {
+    let any = false;
+    for (let i = 0; i < P; i++) {
+      if (meas[off + i]) { dist[i] = 0; src[i] = i; any = true; } else { dist[i] = 1e9; src[i] = -1; }
+    }
+    if (!any) continue;
+    const relax = (i, j, w) => { if (dist[j] + w < dist[i]) { dist[i] = dist[j] + w; src[i] = src[j]; } };
+    for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+      const i = r * nx + c;
+      if (c > 0) relax(i, i - 1, 1);
+      if (r > 0) { relax(i, i - nx, 1); if (c > 0) relax(i, i - nx - 1, R2); if (c < nx - 1) relax(i, i - nx + 1, R2); }
+    }
+    for (let r = ny - 1; r >= 0; r--) for (let c = nx - 1; c >= 0; c--) {
+      const i = r * nx + c;
+      if (c < nx - 1) relax(i, i + 1, 1);
+      if (r < ny - 1) { relax(i, i + nx, 1); if (c < nx - 1) relax(i, i + nx + 1, R2); if (c > 0) relax(i, i + nx - 1, R2); }
+    }
+    for (let i = 0; i < P; i++) if (inB[off + i] && src[i] >= 0) x[off + i] = y[off + src[i]];
+  }
+}
+
+function solveBlock(ds, B, prm, extra) {
+  const { nx, ny } = ds;
+  const { P, nzs, nts, N, inB, meas, y } = B;
+  const lam = prm.lam, wz = prm.wz, wt = prm.wt;
+  const PZ = P, PT = P * nzs;
+
+  const diag = new Float64Array(N);
+  for (let ti = 0; ti < nts; ti++) for (let zi = 0; zi < nzs; zi++) {
+    const off = (ti * nzs + zi) * P;
+    for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+      const i = off + r * nx + c;
+      if (!inB[i]) continue;
+      let d = 1e-6 + (meas[i] ? lam : 0) + (extra ? extra.w[i] : 0);
+      if (c > 0 && inB[i - 1]) d += 1;
+      if (c < nx - 1 && inB[i + 1]) d += 1;
+      if (r > 0 && inB[i - nx]) d += 1;
+      if (r < ny - 1 && inB[i + nx]) d += 1;
+      if (zi > 0 && inB[i - PZ]) d += wz;
+      if (zi < nzs - 1 && inB[i + PZ]) d += wz;
+      if (ti > 0) d += wt;
+      if (ti < nts - 1) d += wt;
+      diag[i] = d;
+    }
+  }
+
+  function A(v, out) {
+    for (let ti = 0; ti < nts; ti++) for (let zi = 0; zi < nzs; zi++) {
+      const off = (ti * nzs + zi) * P;
+      for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+        const i = off + r * nx + c;
+        if (!inB[i]) { out[i] = 0; continue; }
+        let s = diag[i] * v[i];
+        if (c > 0 && inB[i - 1]) s -= v[i - 1];
+        if (c < nx - 1 && inB[i + 1]) s -= v[i + 1];
+        if (r > 0 && inB[i - nx]) s -= v[i - nx];
+        if (r < ny - 1 && inB[i + nx]) s -= v[i + nx];
+        if (zi > 0 && inB[i - PZ]) s -= wz * v[i - PZ];
+        if (zi < nzs - 1 && inB[i + PZ]) s -= wz * v[i + PZ];
+        if (ti > 0) s -= wt * v[i - PT];
+        if (ti < nts - 1) s -= wt * v[i + PT];
+        out[i] = s;
+      }
+    }
+  }
+
+  const x = new Float64Array(N);
+  nearestFill(B, nx, ny, x);
+  const b = new Float64Array(N);
+  let bn = 0;
+  for (let i = 0; i < N; i++) {
+    if (meas[i]) b[i] = lam * y[i];
+    if (extra && extra.w[i] > 0) b[i] += extra.w[i] * extra.v[i];
+    bn += b[i] * b[i];
+  }
+  bn = Math.sqrt(bn) || 1;
+
+  const r = new Float64Array(N), z = new Float64Array(N), p = new Float64Array(N), Ap = new Float64Array(N);
+  A(x, Ap);
+  let rz = 0;
+  for (let i = 0; i < N; i++) {
+    if (!inB[i]) continue;
+    r[i] = b[i] - Ap[i]; z[i] = r[i] / diag[i]; p[i] = z[i]; rz += r[i] * z[i];
+  }
+  let it = 0;
+  for (; it < prm.iters; it++) {
+    A(p, Ap);
+    let pAp = 0;
+    for (let i = 0; i < N; i++) pAp += p[i] * Ap[i];
+    if (pAp <= 0) break;
+    const alpha = rz / pAp;
+    let rr = 0;
+    for (let i = 0; i < N; i++) {
+      if (!inB[i]) continue;
+      x[i] += alpha * p[i]; r[i] -= alpha * Ap[i]; rr += r[i] * r[i];
+    }
+    if (Math.sqrt(rr) < prm.tol * bn) { it++; break; }
+    let rzn = 0;
+    for (let i = 0; i < N; i++) { if (!inB[i]) continue; z[i] = r[i] / diag[i]; rzn += r[i] * z[i]; }
+    const beta = rzn / rz;
+    rz = rzn;
+    for (let i = 0; i < N; i++) if (inB[i]) p[i] = z[i] + beta * p[i];
+  }
+  for (let i = 0; i < N; i++) if (x[i] < 0) x[i] = 0;
+  return { x, iters: it };
+}
+
+/* The block of planes a context may look at, centred on slice z. */
+function blockFor(ds, z, t, ctx) {
+  const zs = [], ts = [];
+  const reach = ctx.slices ? ctx.reach : 0;
+  for (let k = Math.max(0, z - reach); k <= Math.min(ds.nz - 1, z + reach); k++) zs.push(k);
+  if (ctx.time) for (let k = 0; k < ds.nt; k++) ts.push(k); else ts.push(t);
+  return { zs, ts };
+}
+
+function params(ctx) {
+  return { lam: ctx.lam, wz: 0.4, wt: ctx.time ? 1.0 : 0, iters: 600, tol: 1e-5 };
+}
+
+/* Fill slice z. With time in the context every time point comes out at once. */
+function fillSlice(ds, z, t, ctx) {
+  if (ctx.method === 'rbf') return [{ t, plane: rbfPlane(ds, z, t, ctx.slices, ctx.rbfSmooth, null) }];
+  if (ctx.method === 'hybrid') {
+    const r = hybridSolve(ds, z, t, ctx, null);
+    return planesOut(r.x, r.B, r.zs, r.ts, z);
+  }
+  const { zs, ts } = blockFor(ds, z, t, ctx);
+  const B = loadPlanes(ds, zs, ts);
+  const { x } = solveBlock(ds, B, params(ctx));
+  return planesOut(x, B, zs, ts, z);
+}
+
+function planesOut(x, B, zs, ts, z) {
+  const zi = zs.indexOf(z), out = [];
+  for (let ti = 0; ti < ts.length; ti++) {
+    const off = (ti * zs.length + zi) * B.P;
+    const plane = new Float32Array(B.P);
+    for (let i = 0; i < B.P; i++) plane[i] = B.inB[off + i] ? x[off + i] : NaN;
+    out.push({ t: ts[ti], plane });
+  }
+  return out;
+}
+
+/* Hide the samples of slice z at time t that time point tp also lost,
+   predict them, and return the squared error. This copies a real gap
+   pattern, which keeps the test honest. */
+function holdout(ds, z, t, tp, ctx) {
+  const P = ds.nx * ds.ny, off = (t * ds.nz + z) * P, pat = (tp * ds.nz + z) * P, mb = z * P;
+  const span = (ds.hi - ds.lo) / 65534;
+  const hidden = [];
+  for (let i = 0; i < P; i++) if (ds.mask[mb + i] && ds.codes[off + i] > 0 && ds.codes[pat + i] === 0) hidden.push(i);
+  if (hidden.length < 20) return { sse: 0, n: 0 };
+  const truth = (i) => ds.lo + (ds.codes[off + i] - 1) * span;
+  let est;
+  if (ctx.method === 'rbf') {
+    const plane = rbfPlane(ds, z, t, ctx.slices, ctx.rbfSmooth, hidden);
+    est = (i) => plane[i];
+  } else if (ctx.method === 'hybrid') {
+    const r = hybridSolve(ds, z, t, ctx, { list: hidden });
+    const o = (r.ts.indexOf(t) * r.zs.length + r.zi) * r.B.P;
+    est = (i) => r.x[o + i];
+  } else {
+    const { zs, ts } = blockFor(ds, z, t, ctx);
+    const B = loadPlanes(ds, zs, ts);
+    const o = (ts.indexOf(t) * zs.length + zs.indexOf(z)) * B.P;
+    for (const i of hidden) B.meas[o + i] = 0;
+    const { x } = solveBlock(ds, B, params(ctx));
+    est = (i) => x[o + i];
+  }
+  let sse = 0, n = 0;
+  for (const i of hidden) { const e = est(i) - truth(i); if (!Number.isNaN(e)) { sse += e * e; n++; } }
+  return { sse, n };
+}
+
+/* -------------------------------------------------------------------------
+   Interpolation by radial basis functions, thin plate spline kernel with a
+   linear term, solved locally on overlapping patches and blended with a
+   partition of unity so the result has no seams. Each patch sees its K
+   nearest samples; a small smoothing term lets noisy samples be smoothed.
+   ------------------------------------------------------------------------- */
+
+const RBF_H = 10;          // patch spacing in pixels
+const RBF_SZ = 2.5;        // slice spacing in pixel units
+
+function tpsKernel(r2) { return r2 > 1e-12 ? 0.5 * r2 * Math.log(r2) : 0; }
+
+function solveDense(A, b, n) {
+  for (let c = 0; c < n; c++) {
+    let p = c, best = Math.abs(A[c * n + c]);
+    for (let r = c + 1; r < n; r++) { const v = Math.abs(A[r * n + c]); if (v > best) { best = v; p = r; } }
+    if (best < 1e-14) continue;
+    if (p !== c) {
+      for (let k = 0; k < n; k++) { const tmp = A[c * n + k]; A[c * n + k] = A[p * n + k]; A[p * n + k] = tmp; }
+      const tb = b[c]; b[c] = b[p]; b[p] = tb;
+    }
+    const piv = A[c * n + c];
+    for (let r = c + 1; r < n; r++) {
+      const f = A[r * n + c] / piv;
+      if (f === 0) continue;
+      for (let k = c; k < n; k++) A[r * n + k] -= f * A[c * n + k];
+      b[r] -= f * b[c];
+    }
+  }
+  const x = new Float64Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = b[r];
+    for (let k = r + 1; k < n; k++) s -= A[r * n + k] * x[k];
+    const d = A[r * n + r];
+    x[r] = Math.abs(d) < 1e-14 ? 0 : s / d;
+  }
+  return x;
+}
+
+/* k smallest of d[0..n) by index, quickselect on an index array. */
+function kNearest(d, n, k) {
+  const idx = new Int32Array(n);
+  for (let i = 0; i < n; i++) idx[i] = i;
+  if (n <= k) return idx;
+  let lo = 0, hi = n - 1;
+  while (lo < hi) {
+    const pv = d[idx[(lo + hi) >> 1]];
+    let i = lo, j = hi;
+    while (i <= j) {
+      while (d[idx[i]] < pv) i++;
+      while (d[idx[j]] > pv) j--;
+      if (i <= j) { const t = idx[i]; idx[i] = idx[j]; idx[j] = t; i++; j--; }
+    }
+    if (k - 1 <= j) hi = j; else if (k - 1 >= i) lo = i; else break;
+  }
+  return idx.subarray(0, k);
+}
+
+/* Interpolate plane z at time t. slices adds the slice before and after.
+   hide, if given, lists voxels of plane z to leave out of the samples.
+   Returns a Float32Array over the plane, NaN outside the body. */
+function rbfPlane(ds, z, t, slices, smooth, hide) {
+  const { nx, ny } = ds, P = nx * ny;
+  const zs = [];
+  for (let k = slices ? z - 1 : z; k <= (slices ? z + 1 : z); k++) if (k >= 0 && k < ds.nz) zs.push(k);
+  const span = (ds.hi - ds.lo) / 65534;
+  const hidden = hide ? new Uint8Array(P) : null;
+  if (hide) for (const i of hide) hidden[i] = 1;
+
+  let n = 0;
+  for (const k of zs) { const cb = (t * ds.nz + k) * P, mb = k * P; for (let i = 0; i < P; i++) if (ds.mask[mb + i] && ds.codes[cb + i] > 0) n++; }
+  const sx = new Float64Array(n), sy = new Float64Array(n), sz = new Float64Array(n), sv = new Float64Array(n);
+  n = 0;
+  for (const k of zs) {
+    const cb = (t * ds.nz + k) * P, mb = k * P;
+    for (let i = 0; i < P; i++) {
+      const c = ds.codes[cb + i];
+      if (!ds.mask[mb + i] || c === 0) continue;
+      if (k === z && hidden && hidden[i]) continue;
+      sx[n] = (i % nx) / RBF_H; sy[n] = Math.floor(i / nx) / RBF_H; sz[n] = (k - z) * RBF_SZ / RBF_H;
+      sv[n] = ds.lo + (c - 1) * span; n++;
+    }
+  }
+  const out = new Float32Array(P).fill(NaN);
+  const mb = z * P;
+  if (n === 0) return out;
+
+  const K = Math.min(n, slices ? 48 : 32);
+  const npoly = slices ? 4 : 3, m = K + npoly;
+  const gx = Math.ceil((nx - 1) / RBF_H) + 1, gy = Math.ceil((ny - 1) / RBF_H) + 1;
+
+  // which patches touch the body of this plane
+  const need = new Uint8Array(gx * gy);
+  for (let i = 0; i < P; i++) {
+    if (!ds.mask[mb + i]) continue;
+    const x = i % nx, y = Math.floor(i / nx);
+    const i0 = Math.floor(x / RBF_H), j0 = Math.floor(y / RBF_H);
+    need[j0 * gx + i0] = 1;
+    if (i0 + 1 < gx) need[j0 * gx + i0 + 1] = 1;
+    if (j0 + 1 < gy) { need[(j0 + 1) * gx + i0] = 1; if (i0 + 1 < gx) need[(j0 + 1) * gx + i0 + 1] = 1; }
+  }
+
+  const patches = new Array(gx * gy);
+  const d = new Float64Array(n);
+  for (let pj = 0; pj < gy; pj++) for (let pi = 0; pi < gx; pi++) {
+    if (!need[pj * gx + pi]) continue;
+    for (let s = 0; s < n; s++) { const dx = sx[s] - pi, dy = sy[s] - pj; d[s] = dx * dx + dy * dy + sz[s] * sz[s]; }
+    const near = Array.from(kNearest(d, n, K));
+    const A = new Float64Array(m * m), b = new Float64Array(m);
+    let vmin = Infinity, vmax = -Infinity;
+    for (let a = 0; a < K; a++) {
+      const ia = near[a];
+      for (let c = 0; c < K; c++) {
+        const ic = near[c];
+        const dx = sx[ia] - sx[ic], dy = sy[ia] - sy[ic], dz = sz[ia] - sz[ic];
+        A[a * m + c] = tpsKernel(dx * dx + dy * dy + dz * dz);
+      }
+      A[a * m + a] += smooth;
+      const px = sx[ia] - pi, py = sy[ia] - pj;
+      A[a * m + K] = 1; A[a * m + K + 1] = px; A[a * m + K + 2] = py;
+      A[K * m + a] = 1; A[(K + 1) * m + a] = px; A[(K + 2) * m + a] = py;
+      if (slices) { A[a * m + K + 3] = sz[ia]; A[(K + 3) * m + a] = sz[ia]; }
+      b[a] = sv[ia];
+      if (sv[ia] < vmin) vmin = sv[ia];
+      if (sv[ia] > vmax) vmax = sv[ia];
+    }
+    for (let q = K; q < m; q++) A[q * m + q] = -1e-8;
+    const w = solveDense(A, b, m);
+    const cx = new Float64Array(K), cy = new Float64Array(K), cz = new Float64Array(K);
+    for (let a = 0; a < K; a++) { cx[a] = sx[near[a]]; cy[a] = sy[near[a]]; cz[a] = sz[near[a]]; }
+    patches[pj * gx + pi] = { w, cx, cy, cz, vmin, vmax, pi, pj };
+  }
+
+  const evalPatch = (p, X, Y) => {
+    let s = p.w[K] + p.w[K + 1] * (X - p.pi) + p.w[K + 2] * (Y - p.pj);
+    for (let a = 0; a < K; a++) {
+      const dx = X - p.cx[a], dy = Y - p.cy[a], dz = p.cz[a];
+      s += p.w[a] * tpsKernel(dx * dx + dy * dy + dz * dz);
+    }
+    return s < p.vmin ? p.vmin : s > p.vmax ? p.vmax : s;
+  };
+
+  for (let i = 0; i < P; i++) {
+    if (!ds.mask[mb + i]) continue;
+    const x = i % nx, y = Math.floor(i / nx);
+    const X = x / RBF_H, Y = y / RBF_H;
+    const i0 = Math.floor(X), j0 = Math.floor(Y), fx = X - i0, fy = Y - j0;
+    let acc = 0, wsum = 0;
+    const corners = [[i0, j0, (1 - fx) * (1 - fy)], [i0 + 1, j0, fx * (1 - fy)], [i0, j0 + 1, (1 - fx) * fy], [i0 + 1, j0 + 1, fx * fy]];
+    for (const [ci, cj, wt] of corners) {
+      if (wt <= 0 || ci >= gx || cj >= gy) continue;
+      const p = patches[cj * gx + ci];
+      if (!p) continue;
+      acc += wt * evalPatch(p, X, Y); wsum += wt;
+    }
+    out[i] = wsum > 0 ? Math.max(0, acc / wsum) : NaN;
+  }
+  return out;
+}
+
+/* CS and interpolation together: the interpolated field becomes a set of weak
+   virtual samples in the gaps of the centre slice, and the CS solve reconciles
+   them with the real samples under its smoothness prior. */
+function hybridSolve(ds, z, t, ctx, hideAt) {
+  const { zs, ts } = blockFor(ds, z, t, ctx);
+  const B = loadPlanes(ds, zs, ts);
+  const zi = zs.indexOf(z), P = B.P;
+  let hidden = null;
+  if (hideAt) {
+    const off = (ts.indexOf(t) * zs.length + zi) * P;
+    hidden = hideAt.list;
+    for (const i of hidden) B.meas[off + i] = 0;
+  }
+  const extra = { w: new Float64Array(B.N), v: new Float64Array(B.N) };
+  for (let ti = 0; ti < ts.length; ti++) {
+    const off = (ti * zs.length + zi) * P;
+    const r = rbfPlane(ds, z, ts[ti], true, ctx.rbfSmooth, ts[ti] === t ? hidden : null);
+    for (let i = 0; i < P; i++) {
+      if (!B.inB[off + i] || B.meas[off + i] || Number.isNaN(r[i])) continue;
+      extra.w[off + i] = ctx.mu; extra.v[off + i] = r[i];
+    }
+  }
+  const { x } = solveBlock(ds, B, params(ctx), extra);
+  return { x, B, zs, ts, zi };
+}
+
+if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof module === 'undefined') {
+  self.onmessage = (ev) => {
+    const m = ev.data;
+    if (m.type === 'data') {
+      DS[m.key] = m.ds;
+      return;
+    }
+    const ds = DS[m.key];
+    if (!ds) { self.postMessage({ id: m.id, error: 'no data' }); return; }
+    if (m.type === 'fill') {
+      const res = fillSlice(ds, m.z, m.t, m.ctx);
+      self.postMessage({ id: m.id, type: 'fill', res }, res.map((r) => r.plane.buffer));
+    } else if (m.type === 'holdout') {
+      self.postMessage({ id: m.id, type: 'holdout', res: holdout(ds, m.z, m.t, m.tp, m.ctx) });
+    }
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { fillSlice, holdout, rbfPlane, DS };
+</script>
+<script>
+/* MR thermometry viewer
+   Reads the package written by prepare_data.py and draws one transversal slice
+   at a time. The mouse wheel walks along whichever rail is lit at the bottom.  */
+
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+const CODE_MAX = 65535;
+
+const S = {
+  manifest: null,
+  patient: null,        // manifest entry
+  seriesName: 'cumulative',
+  cache: {},            // patientId -> { mask, probes, edges, series:{name:{codes, probeCurves}} }
+  z: 0, t: 0,
+  axis: 'slice',        // rail the wheel drives
+  vmin: 0, vmax: 10,
+  cmap: 'inferno',
+  clipLow: false,
+  showBody: true, showProbes: true, showGrid: false, showBar: true,
+  pixmm: 0,
+  zoom: 1, panX: 0, panY: 0,
+  cursor: null,         // {x,y} in voxel units
+  pin: null,            // {x,y}
+  play: { axis: null, state: 'idle', origin: 0, timer: null },
+  fps: 4, loop: true,
+  userWindow: false,
+  markEst: false,
+  mode: 'view',         // 'view' shows measured maps, 'recon' adds the reconstruction beside them
+  lut: null,
+};
+
+const PROBE_COLOURS = ['#38D6C0', '#F2A65A', '#7FA7FF', '#FF7BA9', '#B6E36A'];
+
+/* ---------------------------------------------------------------- loading */
+
+async function gunzip(buf) {
+  if (typeof DecompressionStream === 'function') {
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new Error('This browser cannot unpack gzip. Please use a recent Chrome, Edge, Firefox or Safari.');
+}
+
+async function fetchArray(file, Type, stamp) {
+  const res = await fetch('data/' + file + (stamp ? '?v=' + stamp : ''), { cache: 'no-store' });
+  if (!res.ok) throw new Error('Could not read data/' + file + ' (' + res.status + ')');
+  const raw = await gunzip(await res.arrayBuffer());
+  return new Type(raw.buffer, raw.byteOffset, raw.byteLength / Type.BYTES_PER_ELEMENT);
+}
+
+function setLoading(on, text) {
+  const el = $('loading');
+  el.classList.toggle('on', !!on);
+  if (text) el.textContent = text;
+}
+
+async function ensurePatient(id) {
+  if (S.cache[id]) return S.cache[id];
+  const p = S.manifest.patients.find((q) => q.id === id);
+  setLoading(true, 'reading body mask and probes');
+  const mask = await fetchArray(p.maskFile, Uint8Array);
+  const probes = await fetchArray(p.probeFile, Uint8Array);
+  S.cache[id] = { mask, probes, edges: {}, series: {} };
+  return S.cache[id];
+}
+
+async function ensureSeries(id, name) {
+  const c = await ensurePatient(id);
+  if (c.series[name]) return c.series[name];
+  const p = S.manifest.patients.find((q) => q.id === id);
+  const meta = p.series[name];
+  if (!meta) throw new Error('No ' + name + ' maps for ' + id);
+  setLoading(true, 'reading ' + name + ' maps, ' + (meta.bytes / 1e6).toFixed(1) + ' MB');
+  const codes = await fetchArray(meta.file, Uint16Array, meta.stamp);
+  const entry = { codes, meta };
+  entry.probeCurves = probeCurves(p, c, entry);
+  c.series[name] = entry;
+  return entry;
+}
+
+/* Mean temperature inside each probe region, per time point. */
+function probeCurves(p, c, entry) {
+  const per = p.nx * p.ny * p.nz;
+  if (!c.probeIndex) {
+    c.probeIndex = {};
+    for (const lab of p.probeLabels) c.probeIndex[lab] = [];
+    for (let i = 0; i < per; i++) {
+      const lab = c.probes[i];
+      if (lab) c.probeIndex[lab].push(i);
+    }
+  }
+  const out = {};
+  for (const lab of p.probeLabels) {
+    const idx = c.probeIndex[lab];
+    const curve = [];
+    for (let t = 0; t < entry.meta.nt; t++) {
+      let sum = 0, n = 0;
+      const base = t * per;
+      for (let k = 0; k < idx.length; k++) {
+        const code = entry.codes[base + idx[k]];
+        if (code > 0) { sum += decode(code, entry.meta); n++; }
+      }
+      curve.push(n ? sum / n : null);
+    }
+    out[lab] = curve;
+  }
+  return out;
+}
+
+function decode(code, meta) {
+  return meta.lo + ((code - 1) / (CODE_MAX - 1)) * (meta.hi - meta.lo);
+}
+
+/* Body outline of one slice, cached. Returns a flat list of x,y pairs. */
+function edgesOf(z) {
+  const c = S.cache[S.patient.id];
+  if (c.edges[z]) return c.edges[z];
+  const { nx, ny } = S.patient;
+  const off = z * nx * ny;
+  const pts = [];
+  for (let y = 0; y < ny; y++) {
+    for (let x = 0; x < nx; x++) {
+      if (!c.mask[off + y * nx + x]) continue;
+      const up = y > 0 && c.mask[off + (y - 1) * nx + x];
+      const dn = y < ny - 1 && c.mask[off + (y + 1) * nx + x];
+      const lf = x > 0 && c.mask[off + y * nx + x - 1];
+      const rt = x < nx - 1 && c.mask[off + y * nx + x + 1];
+      if (!(up && dn && lf && rt)) pts.push(x, y);
+    }
+  }
+  c.edges[z] = pts;
+  return pts;
+}
+
+/* ---------------------------------------------------------------- colours */
+
+function buildLut() {
+  const table = S.manifest.colormaps[S.cmap] || S.manifest.colormaps.inferno;
+  const lut = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256 * 3; i++) lut[i] = table[i];
+  S.lut = lut;
+}
+
+/* ---------------------------------------------------------------- drawing */
+
+const off = document.createElement('canvas');
+const offCtx = off.getContext('2d');
+
+function baseSeries() {
+  if (!S.patient) return null;
+  const c = S.cache[S.patient.id];
+  return c && c.series[S.seriesName];
+}
+
+
+
+
+function currentSeries() { return baseSeries(); }
+
+/* Was this voxel actually measured, or is it an estimate? */
+function measuredAt(x, y, z, t) {
+  const s = baseSeries();
+  if (!s) return false;
+  const { nx, ny, nz } = S.patient;
+  return s.codes[((t * nz + z) * ny + y) * nx + x] > 0;
+}
+
+/* Distance in voxels from each pixel of one slice to the nearest measured one. */
+function gapMap(t, z) {
+  const c = S.cache[S.patient.id];
+  if (!c.gaps) c.gaps = {};
+  const key = S.seriesName + '/' + t + '/' + z;
+  if (c.gaps[key]) return c.gaps[key];
+  const { nx, ny, nz } = S.patient;
+  const s = baseSeries();
+  const base = (t * nz + z) * ny * nx;
+  const big = 1e6;
+  const d = new Float32Array(nx * ny);
+  for (let i = 0; i < nx * ny; i++) d[i] = s.codes[base + i] > 0 ? 0 : big;
+  const R2 = Math.SQRT2;
+  for (let y = 0; y < ny; y++) {
+    for (let x = 0; x < nx; x++) {
+      const i = y * nx + x;
+      let v = d[i];
+      if (x > 0) v = Math.min(v, d[i - 1] + 1);
+      if (y > 0) v = Math.min(v, d[i - nx] + 1);
+      if (x > 0 && y > 0) v = Math.min(v, d[i - nx - 1] + R2);
+      if (x < nx - 1 && y > 0) v = Math.min(v, d[i - nx + 1] + R2);
+      d[i] = v;
+    }
+  }
+  for (let y = ny - 1; y >= 0; y--) {
+    for (let x = nx - 1; x >= 0; x--) {
+      const i = y * nx + x;
+      let v = d[i];
+      if (x < nx - 1) v = Math.min(v, d[i + 1] + 1);
+      if (y < ny - 1) v = Math.min(v, d[i + nx] + 1);
+      if (x < nx - 1 && y < ny - 1) v = Math.min(v, d[i + nx + 1] + R2);
+      if (x > 0 && y < ny - 1) v = Math.min(v, d[i + nx - 1] + R2);
+      d[i] = v;
+    }
+  }
+  c.gaps[key] = d;
+  return d;
+}
+
+function valueAt(x, y, z, t) {
+  const s = currentSeries();
+  if (!s) return null;
+  const { nx, ny, nz } = S.patient;
+  if (x < 0 || y < 0 || x >= nx || y >= ny) return null;
+  const code = s.codes[((t * nz + z) * ny + y) * nx + x];
+  return code === 0 ? null : decode(code, s.meta);
+}
+
+const offB = document.createElement('canvas');
+const offBCtx = offB.getContext('2d');
+
+function colourOf(v, out, j) {
+  const span = Math.max(1e-9, S.vmax - S.vmin);
+  let f = (v - S.vmin) / span;
+  f = f < 0 ? 0 : f > 1 ? 1 : f;
+  const k = (f * 255) | 0;
+  out[j] = S.lut[k * 3]; out[j + 1] = S.lut[k * 3 + 1]; out[j + 2] = S.lut[k * 3 + 2]; out[j + 3] = 255;
+}
+
+function background(inBody, out, j) {
+  if (inBody && S.showBody) { out[j] = 30; out[j + 1] = 38; out[j + 2] = 48; }
+  else { out[j] = 8; out[j + 1] = 11; out[j + 2] = 16; }
+  out[j + 3] = 255;
+}
+
+/* Measured map of the current frame. faint draws it as a dim placeholder. */
+function paintMeasured(canvas, cx, faint) {
+  const s = baseSeries();
+  const { nx, ny, nz } = S.patient;
+  const c = S.cache[S.patient.id];
+  canvas.width = nx; canvas.height = ny;
+  const img = cx.createImageData(nx, ny);
+  const d = img.data;
+  const base = (S.t * nz + S.z) * ny * nx, mbase = S.z * ny * nx;
+  for (let i = 0; i < nx * ny; i++) {
+    const j = i * 4, code = s.codes[base + i], inBody = c.mask[mbase + i] === 1;
+    const v = code === 0 ? null : decode(code, s.meta);
+    if (v === null || (S.clipLow && v < S.vmin)) background(inBody, d, j);
+    else colourOf(v, d, j);
+    if (faint) { d[j] = (d[j] * 0.3 + 6) | 0; d[j + 1] = (d[j + 1] * 0.3 + 8) | 0; d[j + 2] = (d[j + 2] * 0.3 + 12) | 0; }
+  }
+  cx.putImageData(img, 0, 0);
+}
+
+/* Reconstructed plane. Voxels that were never measured can be dimmed. */
+function paintRecon(canvas, cx, plane) {
+  const s = baseSeries();
+  const { nx, ny, nz } = S.patient;
+  const c = S.cache[S.patient.id];
+  canvas.width = nx; canvas.height = ny;
+  const img = cx.createImageData(nx, ny);
+  const d = img.data;
+  const base = (S.t * nz + S.z) * ny * nx, mbase = S.z * ny * nx;
+  for (let i = 0; i < nx * ny; i++) {
+    const j = i * 4, inBody = c.mask[mbase + i] === 1, v = plane[i];
+    if (!inBody || Number.isNaN(v) || (S.clipLow && v < S.vmin)) { background(inBody, d, j); continue; }
+    colourOf(v, d, j);
+    if (S.markEst && s.codes[base + i] === 0) {
+      d[j] = (d[j] * 0.5 + 14) | 0; d[j + 1] = (d[j + 1] * 0.5 + 18) | 0; d[j + 2] = (d[j + 2] * 0.5 + 24) | 0;
+    }
+  }
+  cx.putImageData(img, 0, 0);
+}
+
+function layout() {
+  const stage = $('stage');
+  const cv = $('view');
+  const dpr = window.devicePixelRatio || 1;
+  const w = stage.clientWidth, h = stage.clientHeight;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  return { w, h, dpr };
+}
+
+function split() { return S.mode === 'recon'; }
+
+/* Screen rectangles of the panes: one in the data view, two side by side here. */
+function panes() {
+  const W = $('stage').clientWidth;
+  if (!split()) return [{ x: 0, w: W }];
+  const gap = 20, left = 14, right = 112;
+  const pw = Math.max(80, (W - left - right - gap) / 2);
+  return [{ x: left, w: pw }, { x: left + pw + gap, w: pw }];
+}
+
+function geometry(k) {
+  const stage = $('stage');
+  const { nx, ny } = S.patient;
+  const W = stage.clientWidth, Hh = stage.clientHeight;
+  const P = panes()[k || 0];
+  const base = split() ? Math.min((P.w - 12) / nx, (Hh - 120) / ny)
+                       : Math.min((W - 230) / nx, (Hh - 70) / ny);
+  const scale = base * S.zoom;
+  return {
+    scale, pane: P,
+    ox: (split() ? P.x + (P.w - nx * scale) / 2 : (W - nx * scale) / 2) + S.panX,
+    oy: (Hh - ny * scale) / 2 + S.panY,
+  };
+}
+
+function drawPane(ctx, k, img) {
+  const g = geometry(k);
+  const { nx, ny } = S.patient;
+  const Hh = $('stage').clientHeight;
+  ctx.save();
+  if (split()) { ctx.beginPath(); ctx.rect(g.pane.x, 0, g.pane.w, Hh); ctx.clip(); }
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, g.ox, g.oy, nx * g.scale, ny * g.scale);
+  if (S.showBody) {
+    const pts = edgesOf(S.z);
+    ctx.fillStyle = 'rgba(150,175,200,.55)';
+    const sz = Math.max(1, g.scale * 0.9);
+    for (let i = 0; i < pts.length; i += 2) ctx.fillRect(g.ox + pts[i] * g.scale, g.oy + pts[i + 1] * g.scale, sz, sz);
+  }
+  if (S.showProbes) drawProbes(ctx, g);
+  if (S.cursor && (S.showGrid || split())) {
+    const cx = g.ox + (S.cursor.x + 0.5) * g.scale, cy = g.oy + (S.cursor.y + 0.5) * g.scale;
+    ctx.strokeStyle = 'rgba(56,214,192,.6)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (S.showGrid) {
+      ctx.moveTo(g.ox, cy); ctx.lineTo(g.ox + nx * g.scale, cy);
+      ctx.moveTo(cx, g.oy); ctx.lineTo(cx, g.oy + ny * g.scale);
+    } else {
+      const r = Math.max(6, g.scale * 1.6);
+      ctx.moveTo(cx - r - 4, cy); ctx.lineTo(cx - r * 0.45, cy); ctx.moveTo(cx + r * 0.45, cy); ctx.lineTo(cx + r + 4, cy);
+      ctx.moveTo(cx, cy - r - 4); ctx.lineTo(cx, cy - r * 0.45); ctx.moveTo(cx, cy + r * 0.45); ctx.lineTo(cx, cy + r + 4);
+    }
+    ctx.stroke();
+  }
+  if (S.pin) {
+    const cx = g.ox + (S.pin.x + 0.5) * g.scale, cy = g.oy + (S.pin.y + 0.5) * g.scale;
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(5, g.scale * 0.8), 0, 6.2832); ctx.stroke();
+  }
+  ctx.restore();
+  return g;
+}
+
+function placeLabel(el, g, show) {
+  el.hidden = !show;
+  if (!show) return;
+  el.style.left = (g.pane.x + g.pane.w / 2) + 'px';
+  el.style.top = Math.max(8, g.oy - 32) + 'px';
+}
+
+function draw() {
+  if (!S.patient || !baseSeries()) return;
+  const { dpr } = layout();
+  const cv = $('view');
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  paintMeasured(off, offCtx, false);
+  const g0 = drawPane(ctx, 0, off);
+  placeLabel($('labA'), g0, split());
+  if (split()) {
+    const plane = reconPlane(S.z, S.t);
+    if (plane) paintRecon(offB, offBCtx, plane); else paintMeasured(offB, offBCtx, true);
+    const g1 = drawPane(ctx, 1, offB);
+    placeLabel($('labB'), g1, true);
+    $('labB').classList.toggle('busy', !plane);
+    if (!plane) pumpFill();
+  } else {
+    $('labB').hidden = true;
+  }
+  if (S.showBar) drawScaleBar(ctx, g0);
+  drawColourBar();
+  drawOverlayInfo();
+}
+
+function drawProbes(ctx, g) {
+  const c = S.cache[S.patient.id];
+  const { nx, ny } = S.patient;
+  const mbase = S.z * ny * nx;
+  const sz = Math.max(1, g.scale);
+  for (let i = 0; i < nx * ny; i++) {
+    const lab = c.probes[mbase + i];
+    if (!lab) continue;
+    const x = i % nx, y = (i / nx) | 0;
+    ctx.fillStyle = PROBE_COLOURS[(lab - 1) % PROBE_COLOURS.length] + 'AA';
+    ctx.fillRect(g.ox + x * g.scale, g.oy + y * g.scale, sz, sz);
+  }
+}
+
+function drawScaleBar(ctx, g) {
+  const stage = $('stage');
+  const mm = S.pixmm > 0;
+  let units = mm ? 50 : 20;                       // 50 mm, or 20 pixels
+  if (mm && g.scale * (units / S.pixmm) > 260) units = 20;
+  const px = mm ? units / S.pixmm : units;
+  const len = px * g.scale;
+  const x0 = 22, y0 = stage.clientHeight - 46;
+  ctx.strokeStyle = '#9FB2C4'; ctx.fillStyle = '#9FB2C4'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0); ctx.lineTo(x0 + len, y0);
+  ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0 + 5);
+  ctx.moveTo(x0 + len, y0 - 5); ctx.lineTo(x0 + len, y0 + 5);
+  ctx.stroke();
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.fillText(mm ? units + ' mm' : units + ' px', x0, y0 - 10);
+}
+
+function drawColourBar() {
+  const cv = $('cbar');
+  const dpr = window.devicePixelRatio || 1;
+  const W = 86, H = Math.min(320, Math.max(180, $('stage').clientHeight - 190));
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const bw = 15, bx = 10, by = 26, bh = H - 52;
+  for (let i = 0; i < bh; i++) {
+    const f = 1 - i / (bh - 1);
+    const k = Math.min(255, Math.max(0, (f * 255) | 0));
+    ctx.fillStyle = 'rgb(' + S.lut[k * 3] + ',' + S.lut[k * 3 + 1] + ',' + S.lut[k * 3 + 2] + ')';
+    ctx.fillRect(bx, by + i, bw, 1);
+  }
+  ctx.strokeStyle = '#33465A'; ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, bw, bh);
+  ctx.fillStyle = '#9FB2C4';
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.textBaseline = 'middle';
+  const steps = 5;
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const y = by + bh - f * bh;
+    const v = S.vmin + f * (S.vmax - S.vmin);
+    ctx.beginPath(); ctx.moveTo(bx + bw, y); ctx.lineTo(bx + bw + 4, y); ctx.stroke();
+    ctx.fillText(fmt(v), bx + bw + 8, y);
+  }
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#7A8B9E';
+  ctx.fillText('\u0394T', bx, 14);
+  ctx.fillText('\u00B0C', bx + 26, 14);
+}
+
+function fmt(v) {
+  const a = Math.abs(v);
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  return v.toFixed(2);
+}
+
+function drawOverlayInfo() {
+  const p = S.patient;
+  const mins = S.manifest.geometry.minutesPerStep;
+  const when = mins ? ' &nbsp;<em>' + (S.t * mins).toFixed(0) + ' min</em>' : '';
+  $('overlayInfo').innerHTML =
+    '<span class="big">slice ' + (S.z + 1) + ' <em>of ' + p.nz + '</em></span>' +
+    '<span class="big">time ' + (S.t + 1) + ' <em>of ' + currentSeries().meta.nt + '</em>' + when + '</span>' +
+    p.label.toLowerCase() + ' &nbsp; ' + S.seriesName + ' &nbsp; ' + p.nx + ' by ' + p.ny;
+}
+
+/* ----------------------------------------------------------------- charts */
+
+function chartBase(cv, pad) {
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 280, H = 104;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  return { ctx, W, H, L: pad.l, R: W - pad.r, T: pad.t, B: H - pad.b };
+}
+
+function axes(g, nt, vmax, vmin) {
+  const { ctx } = g;
+  ctx.strokeStyle = '#1F2A36'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(g.L, g.T); ctx.lineTo(g.L, g.B); ctx.lineTo(g.R, g.B);
+  ctx.stroke();
+  ctx.fillStyle = '#5C6C7E'; ctx.font = '10px ui-monospace, monospace';
+  ctx.fillText(fmt(vmax), 2, g.T + 8);
+  ctx.fillText(fmt(vmin), 2, g.B);
+  for (let t = 0; t < nt; t++) {
+    const x = xAt(g, t, nt);
+    ctx.fillStyle = '#3A4859';
+    ctx.fillRect(x - 0.5, g.B, 1, 3);
+  }
+  ctx.fillStyle = '#5C6C7E';
+  ctx.fillText('1', g.L - 2, g.B + 14);
+  ctx.fillText(String(nt), g.R - 6, g.B + 14);
+}
+
+const xAt = (g, t, nt) => nt <= 1 ? (g.L + g.R) / 2 : g.L + (t / (nt - 1)) * (g.R - g.L);
+const yAt = (g, v, lo, hi) => g.B - ((v - lo) / Math.max(1e-9, hi - lo)) * (g.B - g.T);
+
+function drawVoxelChart() {
+  if (!S.patient || !analysisVisible()) return;
+  const cv = $('voxChart');
+  const g = chartBase(cv, { l: 30, r: 8, t: 10, b: 18 });
+  const s = currentSeries();
+  const pt = S.pin || S.cursor;
+  if (!s || !pt) { axes(g, s ? s.meta.nt : 2, 1, 0); note('Hover the image, or click to pin a voxel.'); return; }
+  const nt = s.meta.nt;
+  const vals = [];
+  for (let t = 0; t < nt; t++) vals.push(valueAt(pt.x, pt.y, S.z, t));
+  const est = [];
+  if (split()) for (let t = 0; t < nt; t++) {
+    const pl = reconPlane(S.z, t);
+    const v = pl ? pl[pt.y * S.patient.nx + pt.x] : NaN;
+    est.push(Number.isNaN(v) ? null : v);
+  }
+  const finite = vals.concat(est).filter((v) => v !== null);
+  if (!finite.length) { axes(g, nt, 1, 0); note('No values at this voxel in this slice.'); return; }
+  const hi = Math.max(...finite) * 1.15 + 0.001, lo = 0;
+  axes(g, nt, hi, lo);
+  const { ctx } = g;
+  if (split()) {
+    ctx.strokeStyle = '#F2A65A'; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    let on = false;
+    for (let t = 0; t < nt; t++) {
+      if (est[t] === null) { on = false; continue; }
+      const x = xAt(g, t, nt), y = yAt(g, est[t], lo, hi);
+      if (on) ctx.lineTo(x, y); else { ctx.moveTo(x, y); on = true; }
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = split() ? 'rgba(0,0,0,0)' : '#38D6C0'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  let started = false;
+  for (let t = 0; t < nt; t++) {
+    if (vals[t] === null) { started = false; continue; }
+    const x = xAt(g, t, nt), y = yAt(g, vals[t], lo, hi);
+    if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; }
+  }
+  ctx.stroke();
+  for (let t = 0; t < nt; t++) {
+    if (vals[t] === null) continue;
+    const real = measuredAt(pt.x, pt.y, S.z, t);
+    const x = xAt(g, t, nt), y = yAt(g, vals[t], lo, hi);
+    ctx.beginPath();
+    ctx.arc(x, y, t === S.t ? 3.4 : 2.2, 0, 6.2832);
+    if (real) { ctx.fillStyle = t === S.t ? '#FFFFFF' : '#38D6C0'; ctx.fill(); }
+    else { ctx.strokeStyle = t === S.t ? '#FFFFFF' : '#5C7F86'; ctx.lineWidth = 1.2; ctx.stroke(); }
+  }
+  const here = vals[S.t];
+  note((split() ? 'Dots are measured, the amber line is reconstructed. ' : '') +
+       (S.pin ? 'Pinned voxel ' : 'Voxel ') + pt.x + ', ' + pt.y + ' in slice ' + (S.z + 1) +
+       (here === null ? ', no value at this time point' : ', now ' + fmt(here) + ' \u00B0C'));
+}
+
+function note(txt) { $('voxNote').textContent = txt; }
+
+function drawProbeChart() {
+  if (!S.patient || !analysisVisible()) return;
+  const cv = $('probeChart');
+  const g = chartBase(cv, { l: 30, r: 8, t: 10, b: 18 });
+  const s = currentSeries();
+  const labels = S.patient.probeLabels;
+  const leg = $('probeLegend');
+  if (!s || !labels.length) { axes(g, 2, 1, 0); leg.textContent = 'No probe regions in this data set.'; return; }
+  const nt = s.meta.nt;
+  let hi = 0;
+  for (const lab of labels) for (const v of s.probeCurves[lab]) if (v !== null && v > hi) hi = v;
+  hi = hi * 1.15 + 0.001;
+  axes(g, nt, hi, 0);
+  const { ctx } = g;
+  labels.forEach((lab, i) => {
+    const col = PROBE_COLOURS[i % PROBE_COLOURS.length];
+    const curve = s.probeCurves[lab];
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    let started = false;
+    for (let t = 0; t < nt; t++) {
+      if (curve[t] === null) { started = false; continue; }
+      const x = xAt(g, t, nt), y = yAt(g, curve[t], 0, hi);
+      if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; }
+    }
+    ctx.stroke();
+    for (let t = 0; t < nt; t++) {
+      if (curve[t] === null) continue;
+      ctx.fillStyle = t === S.t ? '#FFFFFF' : col;
+      ctx.beginPath();
+      ctx.arc(xAt(g, t, nt), yAt(g, curve[t], 0, hi), t === S.t ? 3.2 : 2, 0, 6.2832);
+      ctx.fill();
+    }
+  });
+  leg.innerHTML = labels.map((lab, i) => {
+    const v = s.probeCurves[lab][S.t];
+    return '<span><i style="background:' + PROBE_COLOURS[i % PROBE_COLOURS.length] + '"></i>probe ' +
+           lab + ' &nbsp;' + (v === null ? 'no value' : fmt(v) + ' \u00B0C') + '</span>';
+  }).join('');
+}
+
+/* ------------------------------------------------------------------ panel */
+
+function updatePanel() {
+  const p = S.patient, s = currentSeries();
+  $('sliceNum').textContent = S.z + 1;
+  $('sliceTot').textContent = p.nz;
+  $('timeNum').textContent = S.t + 1;
+  $('timeTot').textContent = s.meta.nt;
+  $('status').innerHTML = 'grid <b>' + p.nx + ' \u00D7 ' + p.ny + ' \u00D7 ' + p.nz +
+    '</b> &nbsp; time points <b>' + s.meta.nt + '</b> &nbsp; values <b>' +
+    fmt(s.meta.lo) + ' to ' + fmt(s.meta.hi) + ' \u00B0C</b>';
+  updateReconPanel();
+  const hasProbes = S.patient.probeLabels.length > 0;
+  $('probeBlock').style.display = hasProbes ? '' : 'none';
+  $('probeToggle').style.display = hasProbes ? '' : 'none';
+  buildRails();
+  drawVoxelChart();
+  if (hasProbes) drawProbeChart();
+  updateReading();
+  updateStats();
+}
+
+function updateReconPanel() {
+  $('reconBlock').style.display = split() ? '' : 'none';
+  $('estToggle').style.display = split() ? '' : 'none';
+  if (split()) renderCtxCards();
+}
+
+function updateReading() {
+  const pt = S.cursor || S.pin;
+  if (!pt) {
+    $('valueBig').textContent = 'no voxel';
+    $('valueBig').classList.add('none');
+    $('posTxt').textContent = '.';
+    $('tissueTxt').textContent = '.';
+    $('srcTxt').textContent = '.';
+  } else {
+    let v = valueAt(pt.x, pt.y, S.z, S.t);
+    const pl = split() ? reconPlane(S.z, S.t) : null;
+    if (split()) {
+      const e = pl ? pl[pt.y * S.patient.nx + pt.x] : NaN;
+      v = Number.isNaN(e) ? null : e;
+    }
+    $('valueBig').textContent = v === null ? (split() && !pl ? 'filling' : 'no value') : fmt(v) + ' \u00B0C';
+    $('valueBig').classList.toggle('none', v === null);
+    const mm = S.pixmm > 0 ? '  (' + (pt.x * S.pixmm).toFixed(0) + ', ' + (pt.y * S.pixmm).toFixed(0) + ' mm)' : '';
+    $('posTxt').textContent = 'x ' + pt.x + '  y ' + pt.y + mm;
+    const c = S.cache[S.patient.id];
+    const i = S.z * S.patient.nx * S.patient.ny + pt.y * S.patient.nx + pt.x;
+    const lab = c.probes[i];
+    $('tissueTxt').textContent = lab ? 'probe ' + lab : (c.mask[i] ? 'inside body' : 'outside body');
+    if (!c.mask[i]) {
+      $('srcTxt').textContent = '.';
+    } else if (measuredAt(pt.x, pt.y, S.z, S.t)) {
+      $('srcTxt').textContent = split() ? 'measured ' + fmt(valueAt(pt.x, pt.y, S.z, S.t)) + ' \u00B0C' : 'measured';
+    } else {
+      const g = gapMap(S.t, S.z)[pt.y * S.patient.nx + pt.x];
+      $('srcTxt').textContent = (split() ? 'estimate, ' : 'no sample, ') + g.toFixed(1) + ' voxels from a sample';
+    }
+  }
+  $('pinTxt').textContent = S.pin ? S.pin.x + ', ' + S.pin.y : 'none';
+}
+
+function buildRails() {
+  fillRail($('railSlice'), S.patient.nz, S.z, (i) => !!reconPlane(i, S.t));
+  fillRail($('railTime'), currentSeries().meta.nt, S.t, (i) => !!reconPlane(S.z, i));
+  $('railSlice').classList.toggle('active', S.axis === 'slice');
+  $('railTime').classList.toggle('active', S.axis === 'time');
+}
+
+function fillRail(rail, n, cur, ready) {
+  const box = rail.querySelector('.ticks');
+  if (box.childElementCount !== n) {
+    box.innerHTML = '';
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement('i');
+      d.className = 'tick';
+      d.style.left = (n <= 1 ? 50 : (i / (n - 1)) * 100) + '%';
+      d.style.transform = 'translateX(-50%)';
+      d.dataset.i = i;
+      box.appendChild(d);
+    }
+  }
+  [...box.children].forEach((el, i) => {
+    const active = i === cur;
+    el.classList.toggle('cur', active);
+    el.classList.toggle('ready', split() && ready(i));
+    el.style.height = active ? '26px' : (i % 5 === 0 ? '13px' : '8px');
+  });
+}
+
+/* ------------------------------------------------------------------ moves */
+
+function clampIndex(v, n) { return v < 0 ? 0 : v >= n ? n - 1 : v; }
+
+function step(axis, delta) {
+  if (axis === 'slice') S.z = clampIndex(S.z + delta, S.patient.nz);
+  else S.t = clampIndex(S.t + delta, currentSeries().meta.nt);
+  draw(); updatePanel();
+}
+
+function setAxis(axis) {
+  S.axis = axis;
+  buildRails();
+}
+
+function windowTo(kind) {
+  const s = currentSeries();
+  S.vmin = 0;
+  if (kind === 'frame') S.vmax = Math.max(0.5, s.meta.perTimePoint[S.t].p95);
+  else if (kind === 'full') S.vmax = Math.max(0.5, s.meta.hi);
+  else if (kind === 'p95') S.vmax = Math.max(0.5, s.meta.percentiles['95'] || 10);
+  else S.vmax = parseFloat(kind);
+  $('vmin').value = round2(S.vmin);
+  $('vmax').value = round2(S.vmax);
+  draw();
+}
+
+const round2 = (v) => Math.round(v * 100) / 100;
+
+/* ------------------------------------------------------------------ setup */
+
+async function selectPatient(id, keep) {
+  haltPlayback();
+  const p = S.manifest.patients.find((q) => q.id === id);
+  const same = keep && S.patient && S.patient.id === id;
+  try {
+    if (!p.series[S.seriesName]) S.seriesName = Object.keys(p.series).filter((n) => !n.endsWith('_filled'))[0];
+    await ensureSeries(id, S.seriesName);
+    S.patient = p;
+    if (!same) {
+      S.z = Math.min(Math.floor(p.nz / 2), p.nz - 1);
+      S.t = 0;
+      S.pin = null; S.cursor = null;
+      S.zoom = 1; S.panX = 0; S.panY = 0;
+    }
+    S.t = clampIndex(S.t, currentSeries().meta.nt);
+    [...$('patientSeg').children].forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.patient === id)));
+    [...$('seriesSeg').children].forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.series === S.seriesName)));
+    if (!S.userWindow) windowTo('10');
+    setLoading(false);
+    draw(); updatePanel();
+    startRecon();
+  } catch (err) {
+    setLoading(true, String(err.message || err));
+  }
+}
+
+async function selectSeries(name) {
+  haltPlayback();
+  try {
+    await ensureSeries(S.patient.id, name);
+    S.seriesName = name;
+    S.t = clampIndex(S.t, currentSeries().meta.nt);
+    [...$('seriesSeg').children].forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.dataset.series === name)));
+    if (!S.userWindow) windowTo('10');
+    setLoading(false);
+    draw(); updatePanel();
+    startRecon();
+  } catch (err) {
+    setLoading(true, String(err.message || err));
+  }
+}
+
+function voxelFromEvent(ev) {
+  if (!S.patient) return null;
+  const rect = $('view').getBoundingClientRect();
+  const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+  const P = panes();
+  const k = P.length > 1 && px > P[1].x - 10 ? 1 : 0;
+  const g = geometry(k);
+  const x = Math.floor((px - g.ox) / g.scale);
+  const y = Math.floor((py - g.oy) / g.scale);
+  if (x < 0 || y < 0 || x >= S.patient.nx || y >= S.patient.ny) return null;
+  return { x, y };
+}
+
+function wire() {
+  const stage = $('stage');
+
+  stage.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    if (!S.patient) return;
+    const dir = ev.deltaY > 0 ? 1 : -1;
+    if (ev.ctrlKey || ev.metaKey) {
+      S.zoom = Math.min(12, Math.max(0.4, S.zoom * (dir > 0 ? 0.9 : 1.1)));
+      draw();
+      return;
+    }
+    const other = S.axis === 'slice' ? 'time' : 'slice';
+    step(ev.shiftKey ? other : S.axis, dir);
+  }, { passive: false });
+
+  let dragging = false, lastX = 0, lastY = 0, moved = 0;
+  stage.addEventListener('pointerdown', (ev) => {
+    dragging = true; moved = 0; lastX = ev.clientX; lastY = ev.clientY;
+    if (stage.setPointerCapture) stage.setPointerCapture(ev.pointerId);
+    stage.classList.add('panning');
+  });
+  stage.addEventListener('pointermove', (ev) => {
+    if (!S.patient) return;
+    if (dragging) {
+      S.panX += ev.clientX - lastX; S.panY += ev.clientY - lastY;
+      moved += Math.abs(ev.clientX - lastX) + Math.abs(ev.clientY - lastY);
+      lastX = ev.clientX; lastY = ev.clientY;
+      draw();
+      return;
+    }
+    S.cursor = voxelFromEvent(ev);
+    updateReading(); drawVoxelChart();
+    if (S.showGrid || split()) draw();
+  });
+  stage.addEventListener('pointerup', (ev) => {
+    if (dragging && moved < 4 && S.patient) {
+      const v = voxelFromEvent(ev);
+      S.pin = (S.pin && v && S.pin.x === v.x && S.pin.y === v.y) ? null : v;
+      draw(); updateReading(); drawVoxelChart();
+    }
+    dragging = false; stage.classList.remove('panning');
+  });
+  stage.addEventListener('pointerleave', () => { S.cursor = null; updateReading(); if (split() && S.patient) draw(); });
+
+  document.querySelectorAll('.rail').forEach((r) =>
+    r.addEventListener('click', (ev) => {
+      if (!S.patient) return;
+      setAxis(r.dataset.axis);
+      const box = r.querySelector('.ticks');
+      const rect = box.getBoundingClientRect();
+      if (ev.clientX >= rect.left && ev.clientX <= rect.right) {
+        const n = box.childElementCount;
+        const f = (ev.clientX - rect.left) / rect.width;
+        const idx = Math.round(f * (n - 1));
+        if (r.dataset.axis === 'slice') S.z = clampIndex(idx, S.patient.nz);
+        else S.t = clampIndex(idx, currentSeries().meta.nt);
+        draw();
+      }
+      updatePanel();
+    }));
+
+  $('seriesSeg').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button');
+    if (b) selectSeries(b.dataset.series);
+  });
+  $('patientSeg').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button');
+    if (b) selectPatient(b.dataset.patient);
+  });
+
+  $('vmin').addEventListener('input', (e) => { S.vmin = parseFloat(e.target.value) || 0; S.userWindow = true; draw(); });
+  $('vmax').addEventListener('input', (e) => { S.vmax = parseFloat(e.target.value) || 1; S.userWindow = true; draw(); });
+  document.querySelectorAll('[data-win]').forEach((b) =>
+    b.addEventListener('click', () => { S.userWindow = true; windowTo(b.dataset.win); }));
+  $('cmap').addEventListener('change', (e) => { S.cmap = e.target.value; buildLut(); draw(); });
+  $('clipLow').addEventListener('change', (e) => { S.clipLow = e.target.checked; draw(); });
+  $('showBody').addEventListener('change', (e) => { S.showBody = e.target.checked; draw(); });
+  $('showProbes').addEventListener('change', (e) => { S.showProbes = e.target.checked; draw(); });
+  $('showGrid').addEventListener('change', (e) => { S.showGrid = e.target.checked; draw(); });
+  $('showBar').addEventListener('change', (e) => { S.showBar = e.target.checked; draw(); });
+  $('pixmm').addEventListener('input', (e) => { S.pixmm = parseFloat(e.target.value) || 0; draw(); updateReading(); });
+
+  $('markEst').addEventListener('change', (e) => { S.markEst = e.target.checked; draw(); });
+  wireRecon();
+  $('resetBtn').addEventListener('click', resetView);
+  $('saveBtn').addEventListener('click', savePng);
+  $('zoomInBtn').addEventListener('click', () => zoomBy(1.25));
+  $('zoomOutBtn').addEventListener('click', () => zoomBy(0.8));
+  const tools = document.querySelector('.tools');
+  ['pointerdown', 'pointerup', 'wheel'].forEach((t) =>
+    tools.addEventListener(t, (e) => e.stopPropagation()));
+
+  document.querySelectorAll('.transport').forEach((tr) => {
+    tr.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const b = e.target.closest('button');
+      if (!b || !S.patient) return;
+      const axis = tr.dataset.axis;
+      if (b.dataset.act === 'play') playStart(axis);
+      else if (b.dataset.act === 'pause') playPause(axis);
+      else if (b.dataset.act === 'stop') playStop(axis);
+    });
+  });
+  $('speed').addEventListener('change', (e) => setSpeed(parseFloat(e.target.value) || 4));
+  $('loopPlay').addEventListener('change', (e) => { S.loop = e.target.checked; });
+
+  document.querySelectorAll('.tabs [role="tab"]').forEach((b) =>
+    b.addEventListener('click', () => selectTab(b.dataset.tab)));
+  $('paneBtn').addEventListener('click', togglePane);
+
+  window.addEventListener('keydown', (ev) => {
+    if ($('app').hidden || !S.patient) return;
+    if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+    const other = S.axis === 'slice' ? 'time' : 'slice';
+    if (ev.key === 'ArrowDown') { step(S.axis, 1); ev.preventDefault(); }
+    else if (ev.key === 'ArrowUp') { step(S.axis, -1); ev.preventDefault(); }
+    else if (ev.key === 'ArrowRight') { step(other, 1); ev.preventDefault(); }
+    else if (ev.key === 'ArrowLeft') { step(other, -1); ev.preventDefault(); }
+    else if (ev.key === 's' || ev.key === 'S') setAxis('slice');
+    else if (ev.key === 't' || ev.key === 'T') setAxis('time');
+    else if (ev.key === ' ') { togglePlayLit(); ev.preventDefault(); }
+    else if (ev.key === 'Escape') { if (S.play.axis) playStop(S.play.axis); }
+    else if (ev.key === '0') resetView();
+    else if (ev.key === '+' || ev.key === '=') zoomBy(1.25);
+    else if (ev.key === '-') zoomBy(0.8);
+  });
+
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => { if (S.patient) draw(); }).observe($('stage'));
+  } else {
+    window.addEventListener('resize', () => { if (S.patient) draw(); });
+  }
+}
+
+/* --------------------------------------------------------------- playback */
+
+function axisLength(axis) { return axis === 'slice' ? S.patient.nz : currentSeries().meta.nt; }
+function axisIndex(axis) { return axis === 'slice' ? S.z : S.t; }
+function setAxisIndex(axis, i) { if (axis === 'slice') S.z = i; else S.t = i; }
+
+function playStart(axis) {
+  if (!S.patient) return;
+  const P = S.play;
+  if (P.axis && P.axis !== axis) haltPlayback();
+  if (P.axis === axis && P.state === 'playing') return;
+  if (!(P.axis === axis && P.state === 'paused')) P.origin = axisIndex(axis);
+  P.axis = axis;
+  P.state = 'playing';
+  setAxis(axis);
+  clearInterval(P.timer);
+  P.timer = setInterval(tick, 1000 / S.fps);
+  renderTransport();
+}
+
+function tick() {
+  const P = S.play;
+  if (!P.axis || !S.patient) return;
+  let i = axisIndex(P.axis) + 1;
+  if (i >= axisLength(P.axis)) {
+    if (!S.loop) { playPause(P.axis); return; }
+    i = 0;
+  }
+  setAxisIndex(P.axis, i);
+  draw(); updatePanel();
+}
+
+function playPause(axis) {
+  const P = S.play;
+  if (P.axis !== axis || P.state !== 'playing') return;
+  clearInterval(P.timer); P.timer = null;
+  P.state = 'paused';
+  renderTransport();
+}
+
+/* Stop halts playback and returns to the frame where play was pressed. */
+function playStop(axis) {
+  const P = S.play;
+  if (P.axis !== axis) return;
+  clearInterval(P.timer); P.timer = null;
+  setAxisIndex(axis, Math.min(P.origin, axisLength(axis) - 1));
+  P.axis = null; P.state = 'idle';
+  renderTransport();
+  draw(); updatePanel();
+}
+
+/* Halt without rewinding, for when the data underneath changes. */
+function haltPlayback() {
+  const P = S.play;
+  clearInterval(P.timer); P.timer = null;
+  P.axis = null; P.state = 'idle';
+  renderTransport();
+}
+
+function togglePlayLit() {
+  if (S.play.axis === S.axis && S.play.state === 'playing') playPause(S.axis);
+  else playStart(S.axis);
+}
+
+function renderTransport() {
+  document.querySelectorAll('.transport').forEach((tr) => {
+    const mine = S.play.axis === tr.dataset.axis;
+    tr.querySelector('[data-act="play"]').classList.toggle('on', mine && S.play.state === 'playing');
+    tr.querySelector('[data-act="pause"]').classList.toggle('paused', mine && S.play.state === 'paused');
+    tr.querySelector('[data-act="stop"]').disabled = !mine;
+  });
+}
+
+function setSpeed(fps) {
+  S.fps = fps;
+  if (S.play.state === 'playing') {
+    clearInterval(S.play.timer);
+    S.play.timer = setInterval(tick, 1000 / S.fps);
+  }
+}
+
+/* ------------------------------------------------------------- view tools */
+
+function zoomBy(f) {
+  S.zoom = Math.min(12, Math.max(0.4, S.zoom * f));
+  draw();
+}
+
+function resetView() { S.zoom = 1; S.panX = 0; S.panY = 0; draw(); }
+
+/* Saves what is on screen, colour bar and labels included, as one PNG. */
+function savePng() {
+  if (!S.patient) return;
+  const v = $('view'), cb = $('cbar');
+  const dpr = window.devicePixelRatio || 1;
+  const out = document.createElement('canvas');
+  out.width = v.width; out.height = v.height;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#070A0F';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(v, 0, 0);
+  const sr = $('stage').getBoundingClientRect(), cr = cb.getBoundingClientRect();
+  ctx.drawImage(cb, (cr.left - sr.left) * dpr, (cr.top - sr.top) * dpr, cr.width * dpr, cr.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const nt = currentSeries().meta.nt;
+  const series = S.seriesName + (split() ? ', measured beside reconstructed, ' + CTX_FULL[R.ctx] : '');
+  ctx.fillStyle = '#D6E0EA';
+  ctx.font = '600 15px ui-monospace, Menlo, Consolas, monospace';
+  ctx.fillText('slice ' + (S.z + 1) + ' of ' + S.patient.nz + '    time ' + (S.t + 1) + ' of ' + nt, 16, 28);
+  ctx.fillStyle = '#7A8B9E';
+  ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+  ctx.fillText(S.patient.label + '    ' + series + '    window ' + fmt(S.vmin) + ' to ' + fmt(S.vmax) + ' \u00B0C', 16, 48);
+  const a = document.createElement('a');
+  a.download = S.patient.id + '_' + S.seriesName + (split() ? '_recon_' + R.ctx : '') +
+               '_slice' + (S.z + 1) + '_time' + (S.t + 1) + '.png';
+  a.href = out.toDataURL('image/png');
+  a.click();
+}
+
+/* ------------------------------------------------------------ side panel */
+
+function analysisVisible() {
+  return !document.body.classList.contains('pane-closed') && !$('tab-analysis').hidden;
+}
+
+function selectTab(name) {
+  document.querySelectorAll('.tabs [role="tab"]').forEach((x) =>
+    x.setAttribute('aria-selected', String(x.dataset.tab === name)));
+  document.querySelectorAll('.tabpanel').forEach((p) => { p.hidden = p.id !== 'tab-' + name; });
+  if (S.patient && name !== 'personal') updatePanel();
+}
+
+/* ------------------------------------------------------------------ stats */
+
+function summarise(vals, n, body) {
+  if (!n) return { coverage: 0, median: null, p95: null, max: null };
+  const a = vals.subarray(0, n).sort();
+  const q = (f) => a[Math.min(n - 1, Math.floor(f * (n - 1) + 0.5))];
+  return { coverage: n / Math.max(1, body), median: q(0.5), p95: q(0.95), max: a[n - 1] };
+}
+
+const measStatMemo = new Map();
+
+/* Measured values of one slice, or of the whole volume when z is null. */
+function measuredStats(z, t) {
+  const mkey = S.patient.id + '|' + S.seriesName + '|' + t + '|' + (z === null ? 'all' : z);
+  if (measStatMemo.has(mkey)) return measStatMemo.get(mkey);
+  const res = measuredStatsRaw(z, t);
+  measStatMemo.set(mkey, res);
+  if (measStatMemo.size > 600) measStatMemo.delete(measStatMemo.keys().next().value);
+  return res;
+}
+
+function measuredStatsRaw(z, t) {
+  const s = baseSeries(), c = S.cache[S.patient.id];
+  const { nx, ny, nz } = S.patient, P = nx * ny;
+  const zs = z === null ? [...Array(nz).keys()] : [z];
+  const vals = new Float64Array(P * zs.length);
+  let n = 0, body = 0;
+  for (const k of zs) {
+    const base = (t * nz + k) * P, mb = k * P;
+    for (let i = 0; i < P; i++) {
+      if (!c.mask[mb + i]) continue;
+      body++;
+      const code = s.codes[base + i];
+      if (code) vals[n++] = decode(code, s.meta);
+    }
+  }
+  return summarise(vals, n, body);
+}
+
+const reconStatMemo = new Map();
+
+/* Reconstructed values of one slice, or of the whole volume once every slice is ready. */
+function reconStats(z, t) {
+  const { nx, ny, nz } = S.patient, P = nx * ny;
+  const zs = z === null ? [...Array(nz).keys()] : [z];
+  const planes = zs.map((k) => reconPlane(k, t));
+  if (planes.some((p) => !p)) return null;
+  const key = ctxKey() + '|' + t + '|' + (z === null ? 'all' : z);
+  if (reconStatMemo.has(key)) return reconStatMemo.get(key);
+  const c = S.cache[S.patient.id];
+  const vals = new Float64Array(P * zs.length);
+  let n = 0, body = 0;
+  zs.forEach((k, j) => {
+    const mb = k * P, pl = planes[j];
+    for (let i = 0; i < P; i++) {
+      if (!c.mask[mb + i]) continue;
+      body++;
+      if (!Number.isNaN(pl[i])) vals[n++] = pl[i];
+    }
+  });
+  const res = summarise(vals, n, body);
+  reconStatMemo.set(key, res);
+  if (reconStatMemo.size > 400) reconStatMemo.delete(reconStatMemo.keys().next().value);
+  return res;
+}
+
+function statTable(meas, rec, withRec) {
+  const cell = (v, pct) => v === null || v === undefined ? '<td class="na">.</td>'
+    : '<td>' + (pct ? (v * 100).toFixed(1) + ' %' : fmt(v) + ' \u00B0C') + '</td>';
+  const recCell = (k, pct) => !withRec ? '' : rec ? cell(rec[k], pct) : '<td class="na">filling</td>';
+  const rows = [['coverage inside body', 'coverage', true], ['median', 'median'], ['p95', 'p95'], ['maximum', 'max']];
+  return '<tr><th></th><th>measured</th>' + (withRec ? '<th class="rec">reconstructed</th>' : '') + '</tr>' +
+    rows.map(([label, k, pct]) => '<tr><td class="k">' + label + '</td>' + cell(meas[k], pct) + recCell(k, pct) + '</tr>').join('');
+}
+
+function updateStats() {
+  if (!S.patient || $('tab-stats').hidden || document.body.classList.contains('pane-closed')) return;
+  const rec = split();
+  $('statSlice').innerHTML = statTable(measuredStats(S.z, S.t), rec ? reconStats(S.z, S.t) : null, rec);
+  $('statVolume').innerHTML = statTable(measuredStats(null, S.t), rec ? reconStats(null, S.t) : null, rec);
+  $('statSliceHead').textContent = 'Slice ' + (S.z + 1) + ', time point ' + (S.t + 1);
+  $('statVolumeHead').textContent = 'All ' + S.patient.nz + ' slices, time point ' + (S.t + 1);
+}
+
+function togglePane() {
+  const closed = document.body.classList.toggle('pane-closed');
+  const b = $('paneBtn');
+  b.classList.toggle('on', !closed);
+  b.setAttribute('aria-expanded', String(!closed));
+  b.title = closed ? 'Show the side panel' : 'Hide the side panel';
+  b.setAttribute('aria-label', b.title);
+  if (!closed && S.patient) setTimeout(updatePanel, 250);
+}
+
+
+/* ========================================================= reconstruction */
+/* The solver runs in Web Workers, one that fills what you look at and one
+   that measures how accurate each context is, so neither waits for the other. */
+
+const CTX = {
+  cs2d:   { method: 'cs', slices: false, time: false },
+  cs3d:   { method: 'cs', slices: true,  time: false },
+  cs2dt:  { method: 'cs', slices: false, time: true },
+  cs3dt:  { method: 'cs', slices: true,  time: true },
+  ip2d:   { method: 'rbf', slices: false, time: false },
+  ip3d:   { method: 'rbf', slices: true,  time: false },
+  hybrid: { method: 'hybrid', slices: true, time: false },
+};
+const CTX_GROUPS = [
+  { title: 'CS', items: ['cs2d', 'cs3d', 'cs2dt', 'cs3dt'] },
+  { title: 'Interpolation', items: ['ip2d', 'ip3d'] },
+  { title: null, items: ['hybrid'] },
+];
+const CTX_ORDER = ['cs2d', 'cs3d', 'cs2dt', 'cs3dt', 'ip2d', 'ip3d', 'hybrid'];
+const BENCH_ORDER = ['ip2d', 'ip3d', 'cs2d', 'cs3d', 'hybrid', 'cs2dt', 'cs3dt'];
+const CTX_LABEL = { cs2d: '2D', cs3d: '3D', cs2dt: '2D + time', cs3dt: '3D + time',
+                    ip2d: '2D', ip3d: '3D', hybrid: 'CS + interpolation' };
+const CTX_FULL = { cs2d: 'CS 2D', cs3d: 'CS 3D', cs2dt: 'CS 2D + time', cs3dt: 'CS 3D + time',
+                   ip2d: 'interpolation 2D', ip3d: 'interpolation 3D', hybrid: 'CS + interpolation' };
+const CTX_TIP = {
+  cs2d: 'CS from this slice only',
+  cs3d: 'CS that also uses the slice before and the slice after',
+  cs2dt: 'CS that also uses this slice at every other time point',
+  cs3dt: 'CS over the slice before and after, at every time point',
+  ip2d: 'Interpolation between the samples of this slice',
+  ip3d: 'Interpolation that also uses the slice before and the slice after',
+  hybrid: 'Interpolation guides CS in the gaps, using the slice before and after',
+};
+
+const R = {
+  ctx: 'hybrid',
+  smooth: 40,
+  sigma: 1,              // smoothing strength, 1 at the middle of the slider
+  caches: new Map(),     // context key -> Map of 'z,t' -> Float32Array
+  bench: new Map(),      // data key and smoothing -> accuracy test progress
+};
+const WK = { seq: 0, pending: {}, fill: null, bench: null };
+
+const sigmaOf = (v) => Math.pow(10, (v - 40) / 40);
+function dataKey() { return S.patient.id + '|' + S.seriesName; }
+function ctxKey(name) { return dataKey() + '|' + (name || R.ctx) + '|' + R.sigma.toFixed(4); }
+function ctxObj(name) {
+  return Object.assign({ reach: 1, lam: 5 / R.sigma, rbfSmooth: 0.3 * R.sigma, mu: 1 }, CTX[name || R.ctx]);
+}
+
+function reconPlane(z, t) {
+  if (!S.patient || !split()) return null;
+  const c = R.caches.get(ctxKey());
+  return (c && c.get(z + ',' + t)) || null;
+}
+
+/* ---------------------------------------------------------------- workers */
+
+function makeWorker(name) {
+  const src = $('solverSrc').textContent;
+  let w;
+  try {
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || !URL.createObjectURL) throw new Error('none');
+    w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  } catch (e) {
+    w = inlineWorker(src);
+  }
+  w.onmessage = (ev) => onSolved(name, ev.data);
+  w.busy = false;
+  w.loaded = new Set();
+  return w;
+}
+
+/* Fallback for browsers without workers: same code, run between frames. */
+function inlineWorker(src) {
+  const shell = { onmessage: null };
+  const inner = { postMessage: (data) => setTimeout(() => shell.onmessage && shell.onmessage({ data }), 0) };
+  new Function('self', src)(inner);
+  shell.postMessage = (data) => setTimeout(() => inner.onmessage({ data }), 0);
+  return shell;
+}
+
+function worker(name) {
+  if (!WK[name]) WK[name] = makeWorker(name);
+  const w = WK[name];
+  const key = dataKey();
+  if (!w.loaded.has(key)) {
+    const s = baseSeries(), c = S.cache[S.patient.id], p = S.patient;
+    w.postMessage({ type: 'data', key, ds: {
+      nx: p.nx, ny: p.ny, nz: p.nz, nt: s.meta.nt, lo: s.meta.lo, hi: s.meta.hi,
+      codes: s.codes, mask: c.mask } });
+    w.loaded.add(key);
+  }
+  return w;
+}
+
+function onSolved(name, m) {
+  const job = WK.pending[m.id];
+  delete WK.pending[m.id];
+  if (WK[name]) WK[name].busy = false;
+  if (job && !m.error) {
+    if (job.kind === 'fill') {
+      const cache = R.caches.get(job.key);
+      if (cache) for (const r of m.res) cache.set(job.z + ',' + r.t, r.plane);
+      if (S.patient && split() && job.key === ctxKey()) {
+        if (job.z === S.z) { draw(); drawVoxelChart(); updateReading(); }
+        buildRails();
+        updateStats();
+      }
+    } else if (job.kind === 'bench') {
+      const b = R.bench.get(job.bk);
+      if (b) {
+        const r = b.res[job.ctx];
+        r.sse += m.res.sse; r.n += m.res.n; r.left -= 1;
+      }
+      if (S.patient && split() && job.bk === benchKey()) renderCtxCards();
+    }
+  }
+  if (name === 'fill') pumpFill(); else pumpBench();
+}
+
+/* ------------------------------------------------------------ filling queue */
+
+function trimCaches() {
+  while (R.caches.size > 8) R.caches.delete(R.caches.keys().next().value);
+}
+
+/* What to fill next: the frame on screen, then outwards from it. */
+function nextTarget(cache) {
+  const nz = S.patient.nz, nt = baseSeries().meta.nt, time = CTX[R.ctx].time;
+  let best = null, cost = Infinity;
+  for (let z = 0; z < nz; z++) {
+    if (time) {
+      if (cache.has(z + ',' + S.t)) continue;
+      const c = Math.abs(z - S.z);
+      if (c < cost) { cost = c; best = { z, t: S.t }; }
+    } else {
+      for (let t = 0; t < nt; t++) {
+        if (cache.has(z + ',' + t)) continue;
+        const c = Math.abs(z - S.z) + 0.6 * Math.abs(t - S.t);
+        if (c < cost) { cost = c; best = { z, t }; }
+      }
+    }
+  }
+  return best;
+}
+
+function pumpFill() {
+  if (!S.patient || !split() || !baseSeries()) return;
+  if (WK.fill && WK.fill.busy) return;
+  const key = ctxKey();
+  let cache = R.caches.get(key);
+  if (!cache) { cache = new Map(); R.caches.set(key, cache); trimCaches(); }
+  const next = nextTarget(cache);
+  if (!next) return;
+  const w = worker('fill');
+  w.busy = true;
+  const id = ++WK.seq;
+  WK.pending[id] = { kind: 'fill', key, z: next.z, t: next.t };
+  w.postMessage({ type: 'fill', id, key: dataKey(), z: next.z, t: next.t, ctx: ctxObj() });
+}
+
+/* ---------------------------------------------------------- accuracy test */
+
+function benchKey() { return dataKey() + '|' + R.sigma.toFixed(4); }
+
+function benchPlan() {
+  const meta = baseSeries().meta, nt = meta.nt, nz = S.patient.nz;
+  const t = Math.floor(nt / 2);
+  let tp = t === 0 ? 1 : 0, few = Infinity;
+  meta.perTimePoint.forEach((s, i) => { if (i !== t && s.n < few) { few = s.n; tp = i; } });
+  const zs = [0.3, 0.5, 0.7].map((f) => Math.round(f * (nz - 1)));
+  const todo = [], res = {};
+  for (const c of BENCH_ORDER) {
+    if (nt < 2 && CTX[c].time) continue;
+    res[c] = { sse: 0, n: 0, left: zs.length };
+    for (const z of zs) todo.push({ ctx: c, z });
+  }
+  return { t, tp, todo, res };
+}
+
+function pumpBench() {
+  if (!S.patient || !split() || !baseSeries()) return;
+  if (WK.bench && WK.bench.busy) return;
+  const bk = benchKey();
+  let b = R.bench.get(bk);
+  if (!b) { b = benchPlan(); R.bench.set(bk, b); }
+  const task = b.todo.shift();
+  if (!task) return;
+  const w = worker('bench');
+  w.busy = true;
+  const id = ++WK.seq;
+  WK.pending[id] = { kind: 'bench', bk, ctx: task.ctx };
+  w.postMessage({ type: 'holdout', id, key: dataKey(), z: task.z, t: b.t, tp: b.tp, ctx: ctxObj(task.ctx) });
+}
+
+/* -------------------------------------------------------------- the cards */
+
+/* 3 by 3 icon: rows are slices, columns are time points, the centre is the
+   frame on screen. Squares stand for CS, dots for interpolation, both for both. */
+function pictogram(name) {
+  const c = CTX[name];
+  const on = (r, k) => (r === 1 && k === 1) || (c.slices && k === 1) || (c.time && r === 1);
+  let s = '<svg viewBox="0 0 30 30" class="pict">';
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) {
+    const x = 1.5 + k * 9.5, y = 1.5 + r * 9.5, lit = on(r, k), centre = r === 1 && k === 1;
+    const cls = centre ? 'c' : lit ? 'l' : 'o';
+    if (!lit) { s += '<rect x="' + x + '" y="' + y + '" width="8" height="8" rx="1.8" class="o"/>'; continue; }
+    if (c.method === 'rbf') s += '<circle cx="' + (x + 4) + '" cy="' + (y + 4) + '" r="3.6" class="' + cls + '"/>';
+    else {
+      s += '<rect x="' + x + '" y="' + y + '" width="8" height="8" rx="1.8" class="' + cls + '"/>';
+      if (c.method === 'hybrid') s += '<circle cx="' + (x + 4) + '" cy="' + (y + 4) + '" r="1.7" class="h"/>';
+    }
+  }
+  return s + '</svg>';
+}
+
+function card(c) {
+  return '<button class="ctx' + (c === 'hybrid' ? ' wide' : '') + '" data-ctx="' + c + '" title="' + CTX_TIP[c] + '">' +
+    pictogram(c) + '<span class="ctxname">' + CTX_LABEL[c] + '</span>' +
+    '<span class="ctxerr"><em></em><i><b></b></i></span><span class="best" title="Lowest error"></span></button>';
+}
+
+function buildCtxCards() {
+  $('ctxCards').innerHTML = CTX_GROUPS.map((g) =>
+    (g.title ? '<div class="ctxgroup">' + g.title + '</div>' : '<div class="ctxgroup gap"></div>') +
+    '<div class="ctxgrid">' + g.items.map(card).join('') + '</div>').join('');
+}
+
+function renderCtxCards() {
+  if (!$('ctxCards').firstChild) buildCtxCards();
+  const b = R.bench.get(benchKey());
+  const vals = {};
+  let worst = 0, best = null, complete = true;
+  for (const c of CTX_ORDER) {
+    const r = b && b.res[c];
+    if (r && r.left === 0 && r.n > 0) {
+      vals[c] = Math.sqrt(r.sse / r.n);
+      worst = Math.max(worst, vals[c]);
+      if (best === null || vals[c] < vals[best]) best = c;
+    } else if (r) complete = false;
+  }
+  const nt = baseSeries().meta.nt;
+  $('ctxCards').querySelectorAll('.ctx').forEach((el) => {
+    const c = el.dataset.ctx;
+    el.setAttribute('aria-pressed', String(c === R.ctx));
+    el.disabled = nt < 2 && CTX[c].time;
+    const v = vals[c];
+    el.classList.toggle('measuring', v === undefined && !el.disabled);
+    el.querySelector('em').textContent = v === undefined ? '' : v.toFixed(2) + ' \u00B0C';
+    el.querySelector('i b').style.width = v === undefined ? '0' : Math.max(6, (v / worst) * 100) + '%';
+    el.classList.toggle('isbest', complete && c === best);
+  });
+}
+
+function setContext(name) {
+  if (!CTX[name] || name === R.ctx) return;
+  R.ctx = name;
+  renderCtxCards();
+  draw(); buildRails(); drawVoxelChart(); updateReading();
+  pumpFill();
+}
+
+let smoothTimer = null;
+function setSmoothing(v) {
+  R.smooth = v;
+  clearTimeout(smoothTimer);
+  smoothTimer = setTimeout(() => {
+    R.sigma = sigmaOf(v);
+    renderCtxCards();
+    draw(); buildRails(); drawVoxelChart(); updateReading();
+    pumpFill(); pumpBench();
+  }, 220);
+}
+
+function wireRecon() {
+  buildCtxCards();
+  $('ctxCards').addEventListener('click', (e) => {
+    const b = e.target.closest('.ctx');
+    if (b && !b.disabled) setContext(b.dataset.ctx);
+  });
+  $('smooth').addEventListener('input', (e) => setSmoothing(parseFloat(e.target.value)));
+}
+
+function startRecon() {
+  if (!S.patient || !split()) return;
+  renderCtxCards();
+  pumpFill();
+  pumpBench();
+}
+
+/* ============================================================== start page */
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                'August', 'September', 'October', 'November', 'December'];
+
+/* "2026-10-19 11:45:26" becomes "19 October 2026". */
+function niceDate(s) {
+  const m = /^(\d{4})\D(\d{2})\D(\d{2})/.exec(s || '');
+  return m ? (+m[3]) + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : '';
+}
+
+async function loadManifest() {
+  const res = await fetch('data/manifest.json', { cache: 'force-cache' });
+  if (!res.ok) { S.manifest = null; return null; }
+  const fresh = await res.json();
+  if (!S.manifest || fresh.created !== S.manifest.created) {
+    S.cache = {};
+    S.patient = null;
+    R.caches.clear();
+    R.bench.clear();
+    for (const n of ['fill', 'bench']) if (WK[n]) WK[n].loaded.clear();
+  }
+  S.manifest = fresh;
+  $('patientSeg').innerHTML = fresh.patients.map((p) =>
+    '<button data-patient="' + p.id + '">' + p.label + '</button>').join('');
+  const sel = $('cmap');
+  const keep = S.cmap;
+  sel.innerHTML = Object.keys(fresh.colormaps).map((n) =>
+    '<option value="' + n + '">' + n + '</option>').join('');
+  sel.value = fresh.colormaps[keep] ? keep : (fresh.colormaps.inferno ? 'inferno' : Object.keys(fresh.colormaps)[0]);
+  S.cmap = sel.value;
+  buildLut();
+  if (fresh.geometry && fresh.geometry.pixelSizeMm && !S.pixmm) {
+    S.pixmm = fresh.geometry.pixelSizeMm;
+    $('pixmm').value = S.pixmm;
+  }
+  return fresh;
+}
+
+/* ---------------------------------------------------------------- routing */
+
+function route() {
+  const h = location.hash;
+  if (h === '#/view') enterViewer('view');
+  else if (h === '#/recon') enterViewer('recon');
+  else showHome();
+}
+
+function showHome() {
+  haltPlayback();
+  $('app').hidden = true;
+  $('home').hidden = false;
+  refreshHome();
+}
+
+async function enterViewer(mode) {
+  if (!S.manifest) { try { await loadManifest(); } catch (e) { S.manifest = null; } }
+  if (!S.manifest || !S.manifest.patients.length) { location.hash = '#/'; return; }
+  $('home').hidden = true;
+  $('app').hidden = false;
+  S.mode = mode;
+  document.body.classList.toggle('recon', mode === 'recon');
+  $('modeChip').textContent = mode === 'recon' ? 'Reconstruction' : 'Measured data';
+  $('modeChip').classList.toggle('recon', mode === 'recon');
+  await selectPatient(S.patient ? S.patient.id : S.manifest.patients[0].id, true);
+}
+
+/* ------------------------------------------------------------- start page */
+
+
+async function refreshHome() {
+  let m;
+  try { m = await loadManifest(); } catch (e) { m = null; }
+  const has = !!(m && m.patients && m.patients.length);
+  $('goView').disabled = !has;
+  $('goRecon').disabled = !has;
+  $('dataDate').querySelector('span').textContent = has ? niceDate(m.dataDate || m.created) : 'no data loaded';
+  $('dataDate').title = has ? 'Data of ' + niceDate(m.dataDate || m.created) : 'no data';
+}
+
+function wireHome() {
+  $('goView').addEventListener('click', () => { location.hash = '#/view'; });
+  $('goRecon').addEventListener('click', () => { location.hash = '#/recon'; });
+  $('homeBtn').addEventListener('click', () => { location.hash = '#/'; });
+}
+
+async function boot() {
+  wire();
+  wireHome();
+  renderTransport();
+  try { await loadManifest(); } catch (e) { S.manifest = null; }
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+boot();
+</script>
+</body>
+</html>
