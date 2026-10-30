@@ -778,8 +778,27 @@ function params(ctx) {
   return { lam: ctx.lam, wz, wt, iters: 600, tol: 1e-5 };
 }
 
+/* Data consistency: wherever a voxel was measured, the output keeps the
+   measured value, so only the gaps carry estimates. The holdout test is not
+   affected, because the voxels it hides are not measured in its solve. */
+function keepMeasured(ds, z, out) {
+  const P = ds.nx * ds.ny, span = (ds.hi - ds.lo) / 65534, mb = z * P;
+  for (const r of out) {
+    const cb = (r.t * ds.nz + z) * P;
+    for (let i = 0; i < P; i++) {
+      const c = ds.codes[cb + i];
+      if (c > 0 && ds.mask[mb + i]) r.plane[i] = ds.lo + (c - 1) * span;
+    }
+  }
+  return out;
+}
+
 /* Fill slice z. With time in the context every time point comes out at once. */
 function fillSlice(ds, z, t, ctx) {
+  return keepMeasured(ds, z, fillSliceRaw(ds, z, t, ctx));
+}
+
+function fillSliceRaw(ds, z, t, ctx) {
   if (ctx.method === 'rbf') return [{ t, plane: rbfPlane(ds, z, t, ctx.slices, ctx.rbfSmooth, null) }];
   if (ctx.method === 'hybrid') {
     const r = hybridSolve(ds, z, t, ctx, null);
@@ -2667,7 +2686,7 @@ function renderProbes() {
     const tipVal = recon ? (r ? fmtT(r.tip) : null) : fmtT(m.tip);
     const tipTxt = tipVal || (recon ? 'filling' : 'no sample');
     const sub = recon
-      ? (r ? 'mean ' + fmtT(r.mean) + ' \u00B7 median ' + fmtT(r.median) + ' \u00B7 ' + r.n + ' points' : 'reconstructing the probe slices')
+      ? (r ? 'mean ' + fmtT(r.mean) + ' \u00B7 median ' + fmtT(r.median) + ' over all ' + r.n + ' points' : 'reconstructing the probe slices')
       : (m.n ? 'mean ' + fmtT(m.mean) + ' \u00B7 median ' + fmtT(m.median) + ' \u00B7 ' + m.n + ' of ' + m.total + ' points measured'
              : 'no measured points at this time point');
     const meas = recon && m.tip !== null ? '<span class="pmeas" title="Measured at the tip">measured ' + fmtT(m.tip) + '</span>' : '';
@@ -3089,8 +3108,8 @@ async function probeWorkbook() {
   const u = absOn() ? '\u00B0C' : '\u00B0C rise';
   const head = ['Probe', 'Time point', 'Tip, measured (' + u + ')'];
   if (recon) head.push('Tip, reconstructed (' + u + ')');
-  head.push('Mean, measured (' + u + ')', 'Median, measured (' + u + ')', 'Points measured');
-  if (recon) head.push('Mean, reconstructed (' + u + ')', 'Median, reconstructed (' + u + ')', 'Points reconstructed');
+  head.push('Mean, measured points only (' + u + ')', 'Median, measured points only (' + u + ')', 'Measured points');
+  if (recon) head.push('Mean, all probe points (' + u + ')', 'Median, all probe points (' + u + ')', 'Probe points');
   head.push('Points inside body');
   const rows = [head];
   for (const pr of [...pm, allProbes()]) {
@@ -3116,7 +3135,7 @@ async function probeWorkbook() {
   const about = aboutRows([
     ['Tip', 'Temperature at the single tip voxel listed in Probe positions. By default the tip is the far end of the probe track, deep in the body.'],
     ['Measured', 'Only probe points that carry a measured value at that time point. Most probe points have none.'],
-    ['Reconstructed', recon ? 'Every probe point inside the body, taken from the reconstruction shown in the viewer.' : 'Not included.'],
+    ['Reconstructed', recon ? 'Every probe point inside the body. Measured points keep their measured value; only the unmeasured points are estimated.' : 'Not included.'],
     ['Points outside body', 'Excluded. The maps carry no values outside the body mask.'],
     ['All probes', 'Every probe point of every probe together.'],
   ]);

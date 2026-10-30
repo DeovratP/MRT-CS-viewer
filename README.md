@@ -85,7 +85,9 @@ there. To place a tip somewhere else, pin a voxel and press "Move tip to pin";
 In MRT View data the probe values come from measured voxels only, and most
 probe points carry no measurement at a given time point (1 to 19 percent are
 measured here). In MRT Reconstruction every probe point inside the body has a
-value, taken from the reconstruction on screen.
+value: measured points keep their measured value, and only the unmeasured
+points are estimated, so a mean over all probe points differs from the
+measured mean only because it includes the unmeasured points.
 
 The maps hold the rise over the reference scan. Under Personalization,
 Temperatures, a baseline (37 °C by default) can be added so the probe values
